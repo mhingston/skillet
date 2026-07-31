@@ -1,0 +1,18 @@
+server:
+  listen: ":8080"
+  data_dir: "/var/lib/skillet"
+  public_base_url: "http://localhost:8080"
+  mcp_path: "/mcp"
+  shutdown_timeout: "20s"
+  max_request_body_bytes: 1048576
+organization:
+  id: "demo"
+  display_name: "Demo Organisation"
+auth:
+  mode: "development"
+packages:
+  enabled: true
+search:
+  default_limit: 5
+  max_limit: 10
+repositories: []

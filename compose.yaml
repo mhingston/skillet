@@ -1,0 +1,13 @@
+services:
+  skillet:
+    build: .
+    command: ["-config", "/etc/skillet/skillet.yaml"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - skillet-data:/var/lib/skillet
+      - ./skillet.example.yaml:/etc/skillet/skillet.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  skillet-data:

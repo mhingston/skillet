@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["lockfileVersion", "skills"],
+  "properties": {
+    "lockfileVersion": { "const": 1 },
+    "skills": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["source", "resolved", "integrity"],
+      "properties": {
+        "name": { "type": "string" },
+        "source": {
+          "type": "object",
+          "required": ["type", "repositoryId", "path"],
+          "properties": {
+            "type": { "const": "git" },
+            "repositoryId": { "type": "string", "minLength": 1 },
+            "repositoryUrl": { "type": "string" },
+            "path": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "resolved": {
+          "type": "object",
+          "required": ["commit", "tree"],
+          "properties": { "commit": { "type": "string", "minLength": 1 }, "tree": { "type": "string", "minLength": 1 } },
+          "additionalProperties": false
+        },
+        "integrity": {
+          "type": "object",
+          "required": ["algorithm", "archive", "format"],
+          "properties": {
+            "algorithm": { "const": "sha256" },
+            "archive": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "format": { "enum": ["tar.gz", "zip"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

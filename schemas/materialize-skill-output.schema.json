@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["status", "skill", "resolved", "package", "destination", "materialization", "lockfile", "next_action"],
+  "properties": {
+    "status": { "const": "materialization_required" },
+    "skill": { "type": "object" },
+    "resolved": { "type": "object" },
+    "package": { "$ref": "#/$defs/package" },
+    "variants": { "type": "array", "items": { "type": "object" } },
+    "destination": { "type": "object" },
+    "materialization": { "type": "object" },
+    "lockfile": { "type": "object" },
+    "next_action": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false,
+  "$defs": { "package": { "type": "object", "required": ["resource_uri", "download_url", "format", "archive_sha256", "size_bytes", "expires_at"], "properties": { "resource_uri": { "type": "string", "format": "uri" }, "download_url": { "type": "string", "format": "uri" }, "format": { "enum": ["tar.gz", "zip"] }, "archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "size_bytes": { "type": "integer", "minimum": 0 }, "expires_at": { "type": "string", "format": "date-time" } }, "additionalProperties": false } }
+}
