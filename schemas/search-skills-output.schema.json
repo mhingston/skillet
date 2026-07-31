@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["query_id", "degraded", "candidates"],
+  "properties": {
+    "query_id": { "type": "string" },
+    "degraded": { "type": "object", "additionalProperties": { "type": "boolean" } },
+    "candidates": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/candidate" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "required": ["candidate_id", "skill", "ranking"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "skill": { "type": "object", "required": ["id", "name", "description"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" } }, "additionalProperties": true },
+        "ranking": { "type": "object", "required": ["rank", "matched_fields"], "properties": { "rank": { "type": "integer", "minimum": 1 }, "matched_fields": { "type": "array", "items": { "type": "string" } }, "reason": { "type": "string" } }, "additionalProperties": true }
+      },
+      "additionalProperties": false
+    }
+  }
+}

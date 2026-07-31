@@ -1,0 +1,315 @@
+version: 1
+name: synthetic-routing-v1
+
+# These are routing documents only. The vectors are synthetic one-hot or
+# pairwise vectors so evaluation is deterministic and provider-independent.
+documents:
+  - id: plan
+    name: plan
+    description: Create evidence-grounded implementation and investigation plans without mutating the repository.
+    vector: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  - id: review
+    name: review
+    description: Review changes for correctness, regressions, security risks, and missing tests.
+    vector: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+  - id: skill-creator
+    name: skill-creator
+    description: Create and update Agent Skills with valid metadata, progressive disclosure, and supporting files.
+    vector: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+  - id: repository-ontology
+    name: repository-ontology
+    description: Map repository structure, ownership, boundaries, and important files.
+    vector: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+  - id: agent-readiness
+    name: agent-readiness
+    description: Assess whether an agent, repository, or task is ready for reliable execution.
+    vector: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+  - id: decision-continuity
+    name: decision-continuity
+    description: Recover decisions, unresolved questions, and context across sessions.
+    vector: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+  - id: programmatic-tool-calling
+    name: programmatic-tool-calling
+    description: Design safe deterministic workflows for programmatic tool calls and structured API interactions.
+    vector: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+  - id: teach-me
+    name: teach-me
+    description: Teach a concept through clear explanations, examples, and guided practice.
+    vector: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+  - id: session-lessons
+    name: session-lessons
+    description: Extract lessons learned, recurring friction, and improvements from a work session.
+    vector: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+  - id: audit-me
+    name: audit-me
+    description: Audit a project or process against explicit requirements and produce evidence of gaps.
+    vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+
+cases:
+  # 20 direct single-intent cases.
+  - id: single-plan-implementation
+    type: single
+    query: implementation plan
+    query_vector: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [plan]
+  - id: single-plan-investigation
+    type: single
+    query: investigation planning
+    query_vector: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [plan]
+  - id: single-review-correctness
+    type: single
+    query: review correctness
+    query_vector: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [review]
+  - id: single-review-security
+    type: single
+    query: review security risks
+    query_vector: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [review]
+  - id: single-creator-metadata
+    type: single
+    query: create skill metadata
+    query_vector: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [skill-creator]
+  - id: single-creator-progressive
+    type: single
+    query: skill progressive disclosure
+    query_vector: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [skill-creator]
+  - id: single-ontology-structure
+    type: single
+    query: map repository structure
+    query_vector: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [repository-ontology]
+  - id: single-ontology-ownership
+    type: single
+    query: repository ownership boundaries
+    query_vector: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [repository-ontology]
+  - id: single-readiness-execution
+    type: single
+    query: readiness for execution
+    query_vector: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    relevant_ids: [agent-readiness]
+  - id: single-readiness-reliability
+    type: single
+    query: reliable agent task
+    query_vector: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    relevant_ids: [agent-readiness]
+  - id: single-continuity-decisions
+    type: single
+    query: recover decisions
+    query_vector: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    relevant_ids: [decision-continuity]
+  - id: single-continuity-context
+    type: single
+    query: session context questions
+    query_vector: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    relevant_ids: [decision-continuity]
+  - id: single-tools-structured
+    type: single
+    query: structured tool calls
+    query_vector: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+    relevant_ids: [programmatic-tool-calling]
+  - id: single-tools-deterministic
+    type: single
+    query: deterministic API interactions
+    query_vector: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+    relevant_ids: [programmatic-tool-calling]
+  - id: single-teach-explanation
+    type: single
+    query: teach clear explanations
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+    relevant_ids: [teach-me]
+  - id: single-teach-guided
+    type: single
+    query: guided practice examples
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+    relevant_ids: [teach-me]
+  - id: single-lessons-friction
+    type: single
+    query: recurring session friction
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    relevant_ids: [session-lessons]
+  - id: single-lessons-improvements
+    type: single
+    query: lessons improvements
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    relevant_ids: [session-lessons]
+  - id: single-audit-requirements
+    type: single
+    query: audit explicit requirements
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    relevant_ids: [audit-me]
+  - id: single-audit-evidence
+    type: single
+    query: audit evidence gaps
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    relevant_ids: [audit-me]
+
+  # Ten semantic paraphrases. Their wording is intentionally less lexical;
+  # the synthetic query vector supplies the controlled dense signal.
+  - id: paraphrase-plan
+    type: paraphrase
+    query: outline a safe build roadmap
+    query_vector: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [plan]
+  - id: paraphrase-review
+    type: paraphrase
+    query: inspect a patch for hidden regressions
+    query_vector: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [review]
+  - id: paraphrase-creator
+    type: paraphrase
+    query: author a reusable capability guide
+    query_vector: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [skill-creator]
+  - id: paraphrase-ontology
+    type: paraphrase
+    query: inventory folders and ownership boundaries
+    query_vector: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [repository-ontology]
+  - id: paraphrase-readiness
+    type: paraphrase
+    query: check if the work can be trusted to proceed
+    query_vector: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    relevant_ids: [agent-readiness]
+  - id: paraphrase-continuity
+    type: paraphrase
+    query: resume prior choices after a context switch
+    query_vector: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    relevant_ids: [decision-continuity]
+  - id: paraphrase-tools
+    type: paraphrase
+    query: orchestrate typed calls to external tools
+    query_vector: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+    relevant_ids: [programmatic-tool-calling]
+  - id: paraphrase-teach
+    type: paraphrase
+    query: explain a difficult idea with examples
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+    relevant_ids: [teach-me]
+  - id: paraphrase-lessons
+    type: paraphrase
+    query: identify improvements from yesterday work
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    relevant_ids: [session-lessons]
+  - id: paraphrase-audit
+    type: paraphrase
+    query: check obligations against evidence
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    relevant_ids: [audit-me]
+
+  # Ten complementary-intent cases. Recall is judged over both relevant IDs.
+  - id: multi-plan-review
+    type: multi
+    query: plan implementation and review changes
+    query_vector: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [plan, review]
+  - id: multi-plan-ontology
+    type: multi
+    query: plan work and map repository structure
+    query_vector: [1, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    relevant_ids: [plan, repository-ontology]
+  - id: multi-readiness-audit
+    type: multi
+    query: assess readiness and audit requirements
+    query_vector: [0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    relevant_ids: [agent-readiness, audit-me]
+  - id: multi-continuity-lessons
+    type: multi
+    query: recover session decisions and lessons
+    query_vector: [0, 0, 0, 0, 0, 1, 0, 0, 1, 0]
+    relevant_ids: [decision-continuity, session-lessons]
+  - id: multi-tools-teach
+    type: multi
+    query: teach structured tool calling
+    query_vector: [0, 0, 0, 0, 0, 0, 1, 1, 0, 0]
+    relevant_ids: [programmatic-tool-calling, teach-me]
+  - id: multi-review-audit
+    type: multi
+    query: review changes and audit evidence
+    query_vector: [0, 1, 0, 0, 0, 0, 0, 0, 0, 1]
+    relevant_ids: [review, audit-me]
+  - id: multi-creator-teach
+    type: multi
+    query: create a skill and teach its use
+    query_vector: [0, 0, 1, 0, 0, 0, 0, 1, 0, 0]
+    relevant_ids: [skill-creator, teach-me]
+  - id: multi-ontology-readiness
+    type: multi
+    query: map the repository and assess readiness
+    query_vector: [0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
+    relevant_ids: [repository-ontology, agent-readiness]
+  - id: multi-plan-continuity
+    type: multi
+    query: plan the next step from prior decisions
+    query_vector: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    relevant_ids: [plan, decision-continuity]
+  - id: multi-tools-audit
+    type: multi
+    query: audit a structured external tool workflow
+    query_vector: [0, 0, 0, 0, 0, 0, 1, 0, 0, 1]
+    relevant_ids: [programmatic-tool-calling, audit-me]
+
+  # Ten no-skill controls. Zero vectors deliberately produce only low,
+  # non-lexical RRF background scores; 0.02 is an explicit evidence cutoff,
+  # not a probability claim.
+  - id: negative-astronomy
+    type: negative
+    query: astronomy telescope lunar eclipse
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-cooking
+    type: negative
+    query: recipe sourdough kitchen temperature
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-geography
+    type: negative
+    query: volcanic island oceanography
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-music
+    type: negative
+    query: chamber orchestra tuning
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-gardening
+    type: negative
+    query: greenhouse seedlings compost
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-photography
+    type: negative
+    query: portrait aperture exposure
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-astronomy-2
+    type: negative
+    query: planetary orbit spectroscopy
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-cooking-2
+    type: negative
+    query: pastry butter laminating
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-sports
+    type: negative
+    query: cricket bowling scoreboard
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+  - id: negative-astronomy-3
+    type: negative
+    query: comet trajectory observatory
+    query_vector: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    relevant_ids: []
+
+thresholds:
+  single_top1_accuracy: 0.80
+  single_recall_at3: 0.95
+  multi_recall_at5: 0.90
+  negative_false_activation_rate: 0.10
+  max_regression: 0.05
