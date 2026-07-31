@@ -2,7 +2,20 @@
 
 ![Skillet](assets/skillet.webp)
 
-Skillet is a remotely hosted organisational registry for Agent Skills. Agents search a compact catalogue over authenticated Streamable HTTP MCP, choose candidates, and acquire immutable packages outside the project working tree. Search results never contain complete skill packages.
+> Help agents find and use the right organisational skills—without putting entire skill packages into their context or losing track of which version was used.
+
+AI agents are more useful when they can draw on specialised, reusable guidance for tasks such as planning, reviewing, or working with a repository. As an organisation’s catalogue grows, however, it becomes difficult for an agent to find the right skill, difficult to distribute skills consistently, and easy for a task to depend on an unclear or changing version.
+
+Skillet solves that problem with a remote skill registry. An operator connects approved Git repositories; Skillet discovers and validates their skills, makes them searchable, and retains immutable packages. An agent searches a small set of relevant candidates, chooses what it needs, and receives a verified way to acquire the exact skill outside the project repository. A lockfile records the exact revisions and digests so the same skills can be restored later.
+
+The shipped v1 experience is:
+
+- **Find:** search an organisation’s approved skill catalogue using natural-language intent.
+- **Choose:** review compact candidate descriptions; Skillet never silently selects a skill for the agent.
+- **Use:** acquire one or more selected skills with an integrity-checked command and read their `SKILL.md` entrypoints when needed.
+- **Reproduce:** lock exact Git commits and package digests, then restore those same packages on another run or machine.
+
+Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox.
 
 The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, and Prometheus counters.
 
