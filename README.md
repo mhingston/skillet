@@ -48,6 +48,40 @@ repositories:
 Use `url` and `ref` for remote Git repositories. A repository must specify
 exactly one of `url` or `path`; local paths default to the `working-tree` ref.
 
+### Configuration
+
+The service reads a YAML configuration file; [`skillet.example.yaml`](skillet.example.yaml)
+contains a minimal starting point. The main operational settings are:
+
+- `repositories[].poll_interval` controls how often a source is rescanned. It
+  must be at least `1m`; changes to local skill directories are therefore
+  normally visible within one polling interval.
+- `repositories[].path` configures a plain local directory. Use
+  `repositories[].url` and `ref` for a remote Git source. Configure
+  `include`, `exclude`, `trust_level`, and `search_exclusions` as needed.
+- `server.listen`, `data_dir`, `mcp_path`, and `public_base_url` control the
+  HTTP listener, durable state, MCP route, and package URL base. A public base
+  URL is required when packages are enabled.
+- `auth.mode` must be explicitly set to `development`, `static`, or `oidc`.
+  Production deployments should use `static` or `oidc`; tokens, signing keys,
+  and model credentials are supplied through the configured environment
+  variable names rather than stored in YAML.
+- `packages.enabled` and `packages.signed_url_ttl` control package delivery.
+- `search.default_limit` and `search.max_limit` control intent search result
+  counts. The maximum search limit is `10`; `list_skills` is the separate
+  catalogue-browsing operation and supports up to `100` entries per page.
+
+For the single-user local setup, a typical source configuration is:
+
+```yaml
+repositories:
+  - id: local-skills
+    path: /Users/example/skills
+    poll_interval: 1m
+    trust_level: approved
+    owner: local
+```
+
 ### Suggested host instruction
 
 MCP makes Skillet available to a host; a short host instruction can help an
