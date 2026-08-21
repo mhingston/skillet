@@ -126,6 +126,9 @@ func (r *Restorer) resolve(ctx context.Context, skillID string, entry lockfile.E
 	if entry.Name != "" && info.Name != entry.Name {
 		return Package{}, fmt.Errorf("locked skill name mismatch")
 	}
+	if entry.Version != "" && info.Version != entry.Version {
+		return Package{}, fmt.Errorf("locked skill version mismatch")
+	}
 
 	digest := info.ArchiveSHA256TarGZ
 	if entry.Integrity.Format == "zip" {

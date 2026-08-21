@@ -36,6 +36,13 @@ func TestOpenCreatesIdempotentWALSchema(t *testing.T) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
+	var notNull int
+	if err := db.QueryRow("SELECT \"notnull\" FROM pragma_table_info('skill_revisions') WHERE name='version'").Scan(&notNull); err != nil {
+		t.Fatal(err)
+	}
+	if notNull != 0 {
+		t.Fatalf("version column notnull = %d, want nullable", notNull)
+	}
 }
 
 func TestOpenRejectsMigrationHistoryGaps(t *testing.T) {

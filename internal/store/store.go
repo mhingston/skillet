@@ -46,7 +46,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("read migration version: %w", err)
 	}
-	if version > 6 {
+	if version > 7 {
 		tx.Rollback()
 		db.Close()
 		return nil, fmt.Errorf("unsupported schema migration version %d", version)
@@ -132,6 +132,17 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 				}
 				return nil, fmt.Errorf("migration 6 schema incomplete")
 			}
+		}
+	}
+	if version >= 7 {
+		has, err := tableHasColumn(ctx, tx, "skill_revisions", "version")
+		if err != nil || !has {
+			tx.Rollback()
+			db.Close()
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("migration 7 schema incomplete")
 		}
 	}
 	if version == 0 {
@@ -248,6 +259,18 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			tx.Rollback()
 			db.Close()
 			return nil, fmt.Errorf("record migration 6: %w", err)
+		}
+	}
+	if version < 7 {
+		if _, err = tx.ExecContext(ctx, `ALTER TABLE skill_revisions ADD COLUMN version TEXT DEFAULT NULL`); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, fmt.Errorf("apply migration 7: %w", err)
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations(version) VALUES (7)"); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, fmt.Errorf("record migration 7: %w", err)
 		}
 	}
 	if err = tx.Commit(); err != nil {

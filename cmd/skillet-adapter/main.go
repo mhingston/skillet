@@ -47,13 +47,20 @@ func materialize(args []string) {
 	server := f.String("server", "http://localhost:8080/mcp", "Skillet MCP endpoint")
 	token := f.String("token", os.Getenv("SKILLET_TOKEN"), "bearer token")
 	candidate := f.String("candidate", "", "candidate ID")
+	version := f.String("version", "", "exact SemVer")
+	versionRange := f.String("range", "", "SemVer range")
+	skillID := f.String("skill-id", "", "skill ID for version or range")
 	destination := f.String("destination", "", "host skill directory")
 	harness := f.String("harness", "", "pi, claude, or codex")
 	_ = f.Parse(args)
-	if *candidate == "" || *destination == "" || *harness == "" {
-		fail("-candidate, -destination, and -harness are required")
+	if (*candidate == "" && *version == "" && *versionRange == "") || (*candidate != "" && (*version != "" || *versionRange != "")) || (*version != "" && *versionRange != "") || ((*version != "" || *versionRange != "") && *skillID == "") || *destination == "" || *harness == "" {
+		fail("exactly one of -candidate, -version, or -range plus -destination and -harness are required")
 	}
-	out, path, err := (adapter.Client{Server: *server, Token: *token}).Materialize(context.Background(), *candidate, filepath.Clean(*destination))
+	values := []string{*version, *versionRange, filepath.Clean(*destination)}
+	if *version != "" || *versionRange != "" {
+		values = []string{*version, *versionRange, *skillID, filepath.Clean(*destination)}
+	}
+	out, path, err := (adapter.Client{Server: *server, Token: *token}).Materialize(context.Background(), *candidate, values...)
 	if err != nil {
 		fail(err.Error())
 	}

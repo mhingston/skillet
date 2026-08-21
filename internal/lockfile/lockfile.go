@@ -10,6 +10,7 @@ import (
 
 type Entry struct {
 	Name      string    `json:"name"`
+	Version   string    `json:"version,omitempty"`
 	Source    Source    `json:"source"`
 	Resolved  Resolved  `json:"resolved"`
 	Integrity Integrity `json:"integrity"`

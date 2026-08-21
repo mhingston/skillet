@@ -107,6 +107,26 @@ func TestDiscoverQuarantinesNameDirectoryMismatch(t *testing.T) {
 	}
 }
 
+func TestDiscoverQuarantinesInvalidVersionAndPreservesValidVersion(t *testing.T) {
+	entries := []TreeEntry{{Path: "good/SKILL.md", Kind: RegularFile}, {Path: "bad/SKILL.md", Kind: RegularFile}}
+	got, err := Discover(entries, func(path string) ([]byte, error) {
+		if path == "good/SKILL.md" {
+			return []byte("---\nname: good\ndescription: Good\nmetadata:\n  version: 1.2.3\n---\n"), nil
+		}
+		return []byte("---\nname: bad\ndescription: Bad\nmetadata:\n  version: 1.2\n---\n"), nil
+	}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]Skill{}
+	for _, skill := range got {
+		byPath[skill.RelativePath] = skill
+	}
+	if byPath["good"].Version != "1.2.3" || byPath["good"].State != Admitted || byPath["bad"].State != Quarantined || !hasFinding(byPath["bad"].Findings, skillspec.FindingInvalidVersion) {
+		t.Fatalf("discoveries = %+v", got)
+	}
+}
+
 func hasFinding(findings []skillspec.Finding, code skillspec.FindingCode) bool {
 	for _, finding := range findings {
 		if finding.Code == code {

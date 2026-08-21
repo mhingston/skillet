@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	semver "github.com/Masterminds/semver/v3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,6 +42,7 @@ const (
 	FindingDescriptionTooLong    FindingCode = "description_too_long"
 	FindingCompatibilityLong     FindingCode = "compatibility_too_long"
 	FindingNameDirectoryMismatch FindingCode = "name_directory_mismatch"
+	FindingInvalidVersion        FindingCode = "invalid_version"
 )
 
 type Finding struct {
@@ -109,6 +111,11 @@ func Validate(fm Frontmatter) []Finding {
 	}
 	if len(fm.Compatibility) > MaxCompatibilityLen {
 		findings = append(findings, Finding{FindingCompatibilityLong, fmt.Sprintf("compatibility must be at most %d characters", MaxCompatibilityLen)})
+	}
+	if value, ok := fm.Metadata["version"]; ok {
+		if _, err := semver.StrictNewVersion(value); err != nil {
+			findings = append(findings, Finding{FindingInvalidVersion, fmt.Sprintf("metadata.version must be valid SemVer 2.0: %v", err)})
+		}
 	}
 	return findings
 }

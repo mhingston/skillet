@@ -15,6 +15,8 @@ The shipped v1 experience is:
 - **Use:** acquire one or more selected skills with an integrity-checked command and read their `SKILL.md` entrypoints when needed.
 - **Reproduce:** lock exact Git commits and package digests, then restore those same packages on another run or machine.
 
+Skills may optionally declare `metadata.version` using SemVer 2.0. Exact versions and ranges resolve once to one retained immutable revision; ranges choose the highest stable declared version. Prereleases require an explicit prerelease selector. Unversioned skills remain valid, Git tags are not version authority, and there are no automatic upgrades or dependency resolution. Lockfile commit, tree, and archive SHA-256 fields remain authoritative.
+
 Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository also ships thin optional host adapters: Pi can activate a verified skill during an interactive session; Claude Code and Codex can materialize one into their supported skill directories for the next host session.
 
 The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, Prometheus counters, and optional Pi, Claude Code, and Codex adapters.
@@ -73,6 +75,9 @@ hosts discover skills at process/session boundaries, so their JSON result sets
 `reload_required: true`; begin a new session before relying on the skill.
 Use `SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`, and
 `SKILLET_TOKEN` for overrides.
+
+Adapters also accept `skill-id@1.2.3` or `skill-id@^1.2`; this is a one-time
+resolution and materialization, not an upgrade policy.
 
 ## How it works
 

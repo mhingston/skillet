@@ -55,6 +55,21 @@ func TestValidateReportsSpecificationFindings(t *testing.T) {
 	}
 }
 
+func TestValidateMetadataVersionSemVer(t *testing.T) {
+	for name, value := range map[string]string{"valid": "1.2.3", "prerelease": "1.2.3-rc.1", "invalid": "1.2", "leading zero": "01.2.3"} {
+		t.Run(name, func(t *testing.T) {
+			findings := Validate(Frontmatter{Name: "skill", Description: "x", Metadata: map[string]string{"version": value}})
+			invalid := hasFinding(findings, FindingInvalidVersion)
+			if (name == "invalid" || name == "leading zero") != invalid {
+				t.Fatalf("value %q findings = %+v", value, findings)
+			}
+		})
+	}
+	if findings := Validate(Frontmatter{Name: "skill", Description: "x"}); len(findings) != 0 {
+		t.Fatalf("absent version was rejected: %+v", findings)
+	}
+}
+
 func hasFinding(findings []Finding, code FindingCode) bool {
 	for _, finding := range findings {
 		if finding.Code == code {

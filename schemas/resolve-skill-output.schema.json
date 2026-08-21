@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["skill_id", "version", "revision_id", "commit", "tree", "candidate_id"],
+  "properties": {
+    "skill_id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "revision_id": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "minLength": 1 },
+    "tree": { "type": "string", "minLength": 1 },
+    "candidate_id": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

@@ -92,6 +92,19 @@ type placeholderMaterializeInput struct {
 type placeholderMaterializeOutput struct {
 	Status string `json:"status"`
 }
+type resolveSkillInput struct {
+	SkillID string `json:"skill_id"`
+	Version string `json:"version,omitempty"`
+	Range   string `json:"range,omitempty"`
+}
+type resolveSkillOutput struct {
+	SkillID     string `json:"skill_id"`
+	Version     string `json:"version"`
+	RevisionID  string `json:"revision_id"`
+	Commit      string `json:"commit"`
+	Tree        string `json:"tree"`
+	CandidateID string `json:"candidate_id"`
+}
 
 func New(log *slog.Logger, ready *Readiness) *Server {
 	if log == nil {
@@ -200,6 +213,7 @@ func (s *Server) Handler(mcpPath string, maxBodyBytes int64, auth ...AuthConfig)
 			return nil, placeholderMaterializeOutput{Status: "not_implemented"}, nil
 		})
 	} else {
+		mcp.AddTool(mcpServer, &mcp.Tool{Name: "resolve_skill", Description: "Resolve an exact SemVer or range to one immutable revision."}, s.resolveTool)
 		mcp.AddTool(mcpServer, &mcp.Tool{Name: "materialize_skill", Description: "Prepare acquisition of one selected candidate. Execute only the fixed returned command, verify its digest, then read the returned SKILL.md."}, s.materializeTool)
 	}
 	if maxBodyBytes <= 0 {
@@ -294,6 +308,31 @@ type searchOutput struct {
 	QueryID    string            `json:"query_id"`
 	Degraded   map[string]bool   `json:"degraded"`
 	Candidates []searchCandidate `json:"candidates"`
+}
+
+func (s *Server) resolveTool(ctx context.Context, _ *mcp.CallToolRequest, input resolveSkillInput) (*mcp.CallToolResult, resolveSkillOutput, error) {
+	organizationID := s.organizationID
+	if authenticated, ok := OrganizationID(ctx); ok {
+		organizationID = authenticated
+	}
+	if (input.Version == "") == (input.Range == "") {
+		return nil, resolveSkillOutput{}, fmt.Errorf("exactly one of version or range is required")
+	}
+	info, err := s.catalogue.ResolveVersion(ctx, organizationID, input.SkillID, input.Version, input.Range)
+	if err != nil {
+		if s.catalogue != nil {
+			s.recordAudit(ctx, organizationID, "version_resolution_failed", map[string]any{"skill_id": input.SkillID, "requested_version": input.Version, "requested_range": input.Range, "error": err.Error()})
+		}
+		return nil, resolveSkillOutput{}, err
+	}
+	queryID := fmt.Sprintf("version_%x", sha256.Sum256([]byte(input.SkillID+"\x00"+info.Version+"\x00"+time.Now().UTC().Format(time.RFC3339Nano))))
+	token, err := s.signer.Sign(candidate.Payload{Version: 1, OrganizationID: organizationID, RevisionID: info.RevisionID, QueryID: queryID, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(30 * time.Minute).Unix()})
+	if err != nil {
+		return nil, resolveSkillOutput{}, err
+	}
+	out := resolveSkillOutput{SkillID: info.SkillID, Version: info.Version, RevisionID: info.RevisionID, Commit: info.Commit, Tree: info.Tree, CandidateID: token}
+	s.recordAudit(ctx, organizationID, "version_resolved", map[string]any{"skill_id": info.SkillID, "version": info.Version, "revision_id": info.RevisionID, "requested_version": input.Version, "requested_range": input.Range})
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Version resolved to one immutable revision."}}}, out, nil
 }
 
 func (s *Server) searchTool(ctx context.Context, _ *mcp.CallToolRequest, input searchInput) (*mcp.CallToolResult, searchOutput, error) {
@@ -409,6 +448,9 @@ func (s *Server) searchTool(ctx context.Context, _ *mcp.CallToolRequest, input s
 
 type materializeInput struct {
 	CandidateID string       `json:"candidate_id,omitempty"`
+	SkillID     string       `json:"skill_id,omitempty"`
+	Version     string       `json:"version,omitempty"`
+	Range       string       `json:"range,omitempty"`
 	Locked      *lockedInput `json:"locked,omitempty"`
 	Client      struct {
 		OS    string `json:"os"`
@@ -425,8 +467,9 @@ type lockedInput struct {
 	Format        string `json:"format"`
 }
 type materializeSkill struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
 }
 type materializeResolved struct {
 	RepositoryID string `json:"repository_id"`
@@ -476,8 +519,21 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
 	}
-	if (input.CandidateID == "") == (input.Locked == nil) {
-		return nil, materializeOutput{}, fmt.Errorf("exactly one of candidate_id or locked is required")
+	modes := 0
+	if input.CandidateID != "" {
+		modes++
+	}
+	if input.Locked != nil {
+		modes++
+	}
+	if input.Version != "" {
+		modes++
+	}
+	if input.Range != "" {
+		modes++
+	}
+	if modes != 1 || ((input.Version != "") && (input.Range != "")) {
+		return nil, materializeOutput{}, fmt.Errorf("exactly one of candidate_id, version, range, or locked is required")
 	}
 	if input.Client.OS != "" && input.Client.OS != "linux" && input.Client.OS != "macos" && input.Client.OS != "windows" {
 		return nil, materializeOutput{}, fmt.Errorf("unsupported client os %q", input.Client.OS)
@@ -523,7 +579,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		if (shell == "powershell" && format != "zip") || (shell == "posix" && format != "tar.gz") {
 			return nil, materializeOutput{}, fmt.Errorf("locked package format %q is incompatible with client shell %q", format, shell)
 		}
-	} else {
+	} else if input.CandidateID != "" {
 		p, err := s.signer.Verify(input.CandidateID, organizationID, time.Now())
 		if err != nil {
 			return nil, materializeOutput{}, err
@@ -537,6 +593,21 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		if format == "zip" {
 			digest = info.ArchiveSHA256ZIP
 		}
+	} else {
+		if input.SkillID == "" {
+			return nil, materializeOutput{}, fmt.Errorf("skill_id is required for version materialization")
+		}
+		var resolveErr error
+		info, resolveErr = s.catalogue.ResolveVersion(ctx, organizationID, input.SkillID, input.Version, input.Range)
+		if resolveErr != nil {
+			s.recordAudit(ctx, organizationID, "version_resolution_failed", map[string]any{"skill_id": input.SkillID, "requested_version": input.Version, "requested_range": input.Range, "error": resolveErr.Error()})
+			return nil, materializeOutput{}, fmt.Errorf("resolve version: %w", resolveErr)
+		}
+		digest = info.ArchiveSHA256TarGZ
+		if format == "zip" {
+			digest = info.ArchiveSHA256ZIP
+		}
+		s.recordAudit(ctx, organizationID, "version_resolved", map[string]any{"skill_id": info.SkillID, "version": info.Version, "revision_id": info.RevisionID, "requested_version": input.Version, "requested_range": input.Range})
 	}
 	if s.packages == nil || digest == "" {
 		return nil, materializeOutput{}, fmt.Errorf("package is unavailable")
@@ -565,7 +636,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		command = powershellCommand(download, digest, destination, info.Name, info.SkillID, info.Commit)
 	}
 	displayRepositoryID := strings.TrimPrefix(info.RepositoryID, organizationID+"/")
-	out := materializeOutput{Status: "materialization_required", Skill: materializeSkill{ID: info.SkillID, Name: info.Name}, Resolved: materializeResolved{RepositoryID: displayRepositoryID, Path: info.Path, Commit: info.Commit, Tree: info.Tree}, Package: materializePackage{ResourceURI: download, DownloadURL: download, Format: format, ArchiveSHA256: digest, SizeBytes: size, ExpiresAt: expires}, Destination: struct {
+	out := materializeOutput{Status: "materialization_required", Skill: materializeSkill{ID: info.SkillID, Name: info.Name, Version: info.Version}, Resolved: materializeResolved{RepositoryID: displayRepositoryID, Path: info.Path, Commit: info.Commit, Tree: info.Tree}, Package: materializePackage{ResourceURI: download, DownloadURL: download, Format: format, ArchiveSHA256: digest, SizeBytes: size, ExpiresAt: expires}, Destination: struct {
 		Directory  string `json:"directory"`
 		Entrypoint string `json:"entrypoint"`
 	}{destination, entrypoint}, Materialization: struct {
@@ -574,7 +645,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	}{shell, command}, Lockfile: struct {
 		Path  string         `json:"path"`
 		Entry map[string]any `json:"entry"`
-	}{"skillet-lock.json", map[string]any{"name": info.Name, "source": map[string]any{"type": "git", "repositoryId": displayRepositoryID, "repositoryUrl": safeRepositoryURL(info.RepositoryURL), "path": info.Path}, "resolved": map[string]any{"commit": info.Commit, "tree": info.Tree}, "integrity": map[string]any{"algorithm": "sha256", "archive": digest, "format": format}}}, NextAction: "Execute the fixed materialization command, verify success, then read the returned SKILL.md entrypoint."}
+	}{"skillet-lock.json", map[string]any{"name": info.Name, "version": info.Version, "source": map[string]any{"type": "git", "repositoryId": displayRepositoryID, "repositoryUrl": safeRepositoryURL(info.RepositoryURL), "path": info.Path}, "resolved": map[string]any{"commit": info.Commit, "tree": info.Tree}, "integrity": map[string]any{"algorithm": "sha256", "archive": digest, "format": format}}}, NextAction: "Execute the fixed materialization command, verify success, then read the returned SKILL.md entrypoint."}
 	s.recordAudit(ctx, organizationID, "materialisation_prepared", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "archive_sha256": digest, "format": format})
 	if lockedRestore {
 		s.recordAudit(ctx, organizationID, "locked_revision_restored", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "archive_sha256": digest, "format": format})

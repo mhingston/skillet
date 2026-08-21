@@ -52,6 +52,7 @@ type Skill struct {
 	Searchable   bool
 	State        State
 	HasScripts   bool
+	Version      string
 }
 
 // Discover validates tree safety before reading any SKILL.md, then returns a
@@ -124,7 +125,7 @@ func Discover(entries []TreeEntry, readFile func(string) ([]byte, error), option
 				break
 			}
 		}
-		result = append(result, Skill{RelativePath: root, Entrypoint: candidate.Path, Frontmatter: doc.Frontmatter, Findings: findings, Searchable: searchable, State: state, HasScripts: hasScripts})
+		result = append(result, Skill{RelativePath: root, Entrypoint: candidate.Path, Frontmatter: doc.Frontmatter, Findings: findings, Searchable: searchable, State: state, HasScripts: hasScripts, Version: doc.Frontmatter.Metadata["version"]})
 	}
 	return result, nil
 }

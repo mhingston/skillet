@@ -28,7 +28,9 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (action === "activate" && words.length) {
 				mkdirSync(cache, { recursive: true });
-				const out = await run(pi, ["materialize", "-server", server, "-candidate", words[0], "-destination", cache, "-harness", "pi"]);
+				const selector = words[0];
+				const flag = selector.includes("@") ? ["-skill-id", selector.slice(0, selector.indexOf("@")), ...(selector.slice(selector.indexOf("@") + 1).startsWith("^") ? ["-range", selector.slice(selector.indexOf("@") + 1)] : ["-version", selector.slice(selector.indexOf("@") + 1)])] : ["-candidate", selector];
+				const out = await run(pi, ["materialize", "-server", server, ...flag, "-destination", cache, "-harness", "pi"]);
 				active.add(out.entrypoint);
 				await ctx.reload();
 				ctx.ui.notify(`Activated ${out.skill.name}`, "info");
@@ -40,7 +42,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Deactivated ${words[0]}`, "info");
 				return;
 			}
-			ctx.ui.notify("Usage: /skillet search <query> | /skillet activate <candidate-id> | /skillet deactivate <skill>", "warning");
+			ctx.ui.notify("Usage: /skillet search <query> | /skillet activate <candidate-id or skill-id@version/range> | /skillet deactivate <skill>", "warning");
 		},
 	});
 }

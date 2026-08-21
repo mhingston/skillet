@@ -2,4 +2,6 @@
 set -eu
 : "${SKILLET_MCP_URL:=http://localhost:8080/mcp}"
 : "${SKILLET_CLAUDE_SKILLS_DIR:=${HOME}/.claude/skills}"
-exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -candidate "$1" -destination "$SKILLET_CLAUDE_SKILLS_DIR" -harness claude
+selector="$1"
+if [ "${selector#*@}" != "$selector" ]; then sel="${selector#*@}"; if [ "${sel#^}" != "$sel" ]; then exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -range "$sel" -destination "$SKILLET_CLAUDE_SKILLS_DIR" -harness claude; else exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -version "$sel" -destination "$SKILLET_CLAUDE_SKILLS_DIR" -harness claude; fi; fi
+exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -candidate "$selector" -destination "$SKILLET_CLAUDE_SKILLS_DIR" -harness claude

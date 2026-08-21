@@ -3,6 +3,7 @@ package catalogue
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mhingston/skillet/internal/discovery"
@@ -47,6 +48,57 @@ func TestAdmitPersistsOrganisationSkillRevisionAndActivePointer(t *testing.T) {
 	}
 	if event != "skill_admitted" {
 		t.Fatal(event)
+	}
+}
+
+func TestResolveVersionSelectsHighestStableAndRejectsAmbiguity(t *testing.T) {
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "catalogue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	packages := packagestore.New(filepath.Join(t.TempDir(), "packages"))
+	catalog := New(db, packages)
+	for i, version := range []string{"1.2.0", "1.4.0", "2.0.0-beta.1"} {
+		tar, _ := packages.Put("tar.gz", []byte("tar"+version))
+		zip, _ := packages.Put("zip", []byte("zip"+version))
+		skill := discovery.Skill{RelativePath: "plan", State: discovery.Admitted, Searchable: true, Version: version, Frontmatter: skillspec.Frontmatter{Name: "plan", Description: "plan", Metadata: map[string]string{"version": version}}}
+		if _, err := catalog.Admit(context.Background(), Repository{ID: "skills", OrganizationID: "demo", URL: "https://example.com", Ref: "main"}, skill, "commit"+string(rune('a'+i)), "tree"+string(rune('a'+i)), PackageDigests{TarGZ: tar, ZIP: zip}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := catalog.ResolveVersion(context.Background(), "demo", "demo/skills/plan", "", "^1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Version != "1.4.0" {
+		t.Fatalf("range selected %q", info.Version)
+	}
+	if _, err := catalog.ResolveVersion(context.Background(), "demo", "demo/skills/plan", "1.3.0", ""); err == nil {
+		t.Fatal("no-match exact version was accepted")
+	}
+	if _, err := catalog.ResolveVersion(context.Background(), "demo", "demo/skills/plan", "", "not-a-range"); err == nil {
+		t.Fatal("malformed range was accepted")
+	}
+}
+
+func TestRecordQuarantinePreservesVersionMetadata(t *testing.T) {
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "catalogue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	catalog := New(db)
+	skill := discovery.Skill{RelativePath: "bad", State: discovery.Quarantined, Version: "01.2.3", Frontmatter: skillspec.Frontmatter{Name: "bad", Description: "Bad", Metadata: map[string]string{"version": "01.2.3", "source": "fixture"}}, Findings: []skillspec.Finding{{Code: skillspec.FindingInvalidVersion, Message: "invalid"}}}
+	if err := catalog.RecordQuarantine(context.Background(), Repository{ID: "skills", OrganizationID: "demo"}, skill, "commit", "tree"); err != nil {
+		t.Fatal(err)
+	}
+	var version, metadata string
+	if err := db.QueryRow("SELECT version, metadata_json FROM skill_revisions WHERE state='quarantined'").Scan(&version, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if version != "01.2.3" || !strings.Contains(metadata, "source") {
+		t.Fatalf("quarantined provenance = version %q metadata %q", version, metadata)
 	}
 }
 

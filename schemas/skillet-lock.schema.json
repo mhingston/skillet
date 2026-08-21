@@ -16,6 +16,7 @@
       "required": ["source", "resolved", "integrity"],
       "properties": {
         "name": { "type": "string" },
+        "version": { "type": "string" },
         "source": {
           "type": "object",
           "required": ["type", "repositoryId", "path"],

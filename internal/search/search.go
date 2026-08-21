@@ -16,6 +16,7 @@ type Document struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
 	Description    string            `json:"description"`
+	Version        string            `json:"version,omitempty"`
 	Compatibility  string            `json:"compatibility,omitempty"`
 	OrganizationID string            `json:"organization_id,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`

@@ -4,7 +4,7 @@
   "required": ["status", "skill", "resolved", "package", "destination", "materialization", "lockfile", "next_action"],
   "properties": {
     "status": { "const": "materialization_required" },
-    "skill": { "type": "object" },
+    "skill": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "version": { "type": "string" } }, "additionalProperties": false },
     "resolved": { "type": "object" },
     "package": { "$ref": "#/$defs/package" },
     "variants": { "type": "array", "items": { "type": "object" } },
