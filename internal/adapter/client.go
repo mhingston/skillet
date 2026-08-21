@@ -221,7 +221,12 @@ func downloadAndExtract(ctx context.Context, url, expected, format, destination,
 }
 
 func hostOS() string {
-	return runtime.GOOS
+	switch runtime.GOOS {
+	case "darwin":
+		return "macos"
+	default:
+		return runtime.GOOS
+	}
 }
 
 type bearerTransport struct {

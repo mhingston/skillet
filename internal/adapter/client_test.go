@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -36,6 +37,12 @@ func TestDownloadAndExtractRejectsDigestMismatch(t *testing.T) {
 	defer ts.Close()
 	if _, err := downloadAndExtract(t.Context(), ts.URL, "0000000000000000000000000000000000000000000000000000000000000000", "tar.gz", t.TempDir(), "plan"); err == nil {
 		t.Fatal("digest mismatch was accepted")
+	}
+}
+
+func TestHostOSUsesSkilletContractNameOnMacOS(t *testing.T) {
+	if runtime.GOOS == "darwin" && hostOS() != "macos" {
+		t.Fatalf("hostOS() = %q, want macos", hostOS())
 	}
 }
 
