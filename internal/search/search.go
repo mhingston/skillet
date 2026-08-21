@@ -155,6 +155,26 @@ func (i *Index) Document(id string) (Document, bool) {
 	return doc, ok
 }
 
+// List returns the active, searchable routing documents in deterministic order.
+// It is intended for catalogue browsing; it does not create search candidates.
+func (i *Index) List(filters Filters) []Document {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	docs := make([]Document, 0, len(i.docs))
+	for _, doc := range i.docs {
+		if doc.Searchable && matches(doc, filters) {
+			docs = append(docs, doc)
+		}
+	}
+	sort.Slice(docs, func(a, b int) bool {
+		if docs[a].Name == docs[b].Name {
+			return docs[a].ID < docs[b].ID
+		}
+		return docs[a].Name < docs[b].Name
+	})
+	return docs
+}
+
 func (i *Index) Search(query string, lexicalDepth, vectorDepth, limit, rrfK int) ([]Hit, bool, error) {
 	return i.SearchWithFilters(query, lexicalDepth, vectorDepth, limit, rrfK, Filters{})
 }

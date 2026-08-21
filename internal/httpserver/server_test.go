@@ -164,9 +164,99 @@ func TestOfficialMCPClientListsSkilletTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		seen[tool.Name] = true
 	}
-	if !seen["search_skills"] || !seen["materialize_skill"] {
+	if !seen["search_skills"] || !seen["list_skills"] || !seen["materialize_skill"] {
 		t.Fatalf("tools = %+v", tools.Tools)
 	}
+}
+
+func TestListSkillsReturnsDeterministicPaginatedMetadata(t *testing.T) {
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, doc := range []search.Document{
+		{ID: "demo/skills/z", OrganizationID: "demo", Name: "zeta", Description: "Z", Searchable: true},
+		{ID: "demo/skills/a", OrganizationID: "demo", Name: "alpha", Description: "A", Searchable: true},
+		{ID: "other/skills/x", OrganizationID: "other", Name: "other", Description: "Other", Searchable: true},
+	} {
+		if err := index.Add(doc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	_, out, err := s.listSkillsTool(context.Background(), nil, listSkillsInput{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Total != 2 || len(out.Skills) != 1 || out.Skills[0].Name != "alpha" || !out.HasMore {
+		t.Fatalf("list output = %+v", out)
+	}
+	_, page, err := s.listSkillsTool(context.Background(), nil, listSkillsInput{Limit: 1, Offset: 1})
+	if err != nil || len(page.Skills) != 1 || page.Skills[0].Name != "zeta" || page.HasMore {
+		t.Fatalf("second page = %+v, err=%v", page, err)
+	}
+}
+
+func TestMCPListSkillsReturnsStructuredMetadata(t *testing.T) {
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Add(search.Document{ID: "demo/skills/plan", OrganizationID: "demo", Name: "plan", Description: "Make plans", Searchable: true}); err != nil {
+		t.Fatal(err)
+	}
+	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	ts := httptest.NewServer(s.Handler("/mcp", 1<<20, AuthConfig{Mode: "development", OrganizationID: "demo"}))
+	defer ts.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "list-test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: ts.URL + "/mcp", DisableStandaloneSSE: true, MaxRetries: -1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "list_skills", Arguments: map[string]any{"limit": 1}})
+	if err != nil || result.IsError {
+		t.Fatalf("list result error=%v result=%+v", err, result)
+	}
+	var output listSkillsOutput
+	encoded, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encoded, &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.Total != 1 || len(output.Skills) != 1 || output.Skills[0].ID != "demo/skills/plan" {
+		t.Fatalf("structured list output = %s", encoded)
+	}
+}
+
+func TestSearchToolAdvertisesConfiguredMaximum(t *testing.T) {
+	ts := httptest.NewServer(New(nil, nil).Handler("/mcp", 1<<20, AuthConfig{Mode: "development", OrganizationID: "demo"}))
+	defer ts.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "schema-test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: ts.URL + "/mcp", DisableStandaloneSSE: true, MaxRetries: -1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range tools.Tools {
+		if tool.Name == "search_skills" {
+			schema, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(schema), `"maximum":10`) {
+				t.Fatalf("search schema does not advertise max 10: %s", schema)
+			}
+			return
+		}
+	}
+	t.Fatal("search_skills tool not found")
 }
 
 func TestSearchUsesAuthenticatedOrganizationForCandidates(t *testing.T) {
