@@ -288,7 +288,10 @@ func contains(values []string, target string) bool {
 }
 
 func (i *Index) lexicalSearch(query string, depth int) ([]string, error) {
-	req := bleve.NewSearchRequestOptions(bleve.NewQueryStringQuery(query), depth, 0, false)
+	// Queries come from natural-language MCP input. MatchQuery prevents paths,
+	// punctuation, and other ordinary prose from being interpreted as Bleve
+	// query-string operators such as fuzzy-query syntax.
+	req := bleve.NewSearchRequestOptions(bleve.NewMatchQuery(query), depth, 0, false)
 	res, err := i.lexical.Search(req)
 	if err != nil {
 		return nil, err

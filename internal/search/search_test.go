@@ -57,6 +57,16 @@ func TestSearchRejectsEmptyQuery(t *testing.T) {
 	}
 }
 
+func TestSearchAcceptsPathsInNaturalLanguageQueries(t *testing.T) {
+	idx, _ := New(nil)
+	if err := idx.Add(Document{ID: "architecture", Name: "architecture", Description: "Map a repository", Searchable: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := idx.Search("Explore /Users/example/skillet on macOS", 50, 50, 5, 60); err != nil {
+		t.Fatalf("path in query returned an error: %v", err)
+	}
+}
+
 func TestSearchAppliesPolicyFiltersBeforeReturningCandidates(t *testing.T) {
 	idx, _ := New(nil)
 	_ = idx.Add(Document{ID: "approved-plan", Name: "plan", Description: "implementation plan", RepositoryID: "approved-repo", TrustLevel: "approved", Metadata: map[string]string{"audience": "user"}, Searchable: true})
