@@ -51,6 +51,20 @@ func TestAdmitPersistsOrganisationSkillRevisionAndActivePointer(t *testing.T) {
 	}
 }
 
+func TestEnsureRepositorySupportsEmptySourceAudit(t *testing.T) {
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "catalogue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := New(db).EnsureRepository(context.Background(), Repository{ID: "skills", OrganizationID: "demo", URL: "file:///tmp/skills", Ref: "working-tree", TrustLevel: "approved", Owner: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := New(db).RecordAudit(context.Background(), "demo", "repository_sync_started", map[string]any{"repository_id": "demo/skills"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestResolveVersionSelectsHighestStableAndRejectsAmbiguity(t *testing.T) {
 	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "catalogue.db"))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,6 +87,7 @@ type Repository struct {
 	ID                string         `yaml:"id"`
 	OrganizationID    string         `yaml:"organization_id"`
 	URL               string         `yaml:"url"`
+	Path              string         `yaml:"path"`
 	Ref               string         `yaml:"ref"`
 	PollInterval      time.Duration  `yaml:"-"`
 	PollIntervalText  string         `yaml:"poll_interval"`
@@ -235,13 +237,35 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("repositories[%d].id duplicates %q", i, r.ID)
 		}
 		seen[r.ID] = true
-		if u, err := url.Parse(r.URL); err != nil || u.Scheme == "" || u.Host == "" {
-			return fmt.Errorf("repositories[%d].url must be an absolute URL", i)
-		} else if u.User != nil && (u.Scheme == "http" || u.Scheme == "https") {
-			return fmt.Errorf("repositories[%d].url must not contain credentials", i)
+		if r.URL != "" && r.Path != "" {
+			return fmt.Errorf("repositories[%d] must specify either url or path, not both", i)
 		}
-		if r.Ref == "" {
-			return fmt.Errorf("repositories[%d].ref is required", i)
+		if r.Path != "" {
+			absolute, err := filepath.Abs(r.Path)
+			if err != nil {
+				return fmt.Errorf("repositories[%d].path: %w", i, err)
+			}
+			info, err := os.Stat(absolute)
+			if err != nil {
+				return fmt.Errorf("repositories[%d].path: %w", i, err)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("repositories[%d].path must be a directory", i)
+			}
+			r.Path = absolute
+			r.URL = (&url.URL{Scheme: "file", Path: absolute}).String()
+			if r.Ref == "" {
+				r.Ref = "working-tree"
+			}
+		} else {
+			if u, err := url.Parse(r.URL); err != nil || u.Scheme == "" || u.Host == "" {
+				return fmt.Errorf("repositories[%d].url must be an absolute URL", i)
+			} else if u.User != nil && (u.Scheme == "http" || u.Scheme == "https") {
+				return fmt.Errorf("repositories[%d].url must not contain credentials", i)
+			}
+			if r.Ref == "" {
+				return fmt.Errorf("repositories[%d].ref is required", i)
+			}
 		}
 		if r.PollIntervalText == "" {
 			r.PollIntervalText = "15m"

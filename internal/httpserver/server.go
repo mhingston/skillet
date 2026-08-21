@@ -630,6 +630,10 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	destination := "${XDG_CACHE_HOME:-$HOME/.cache}/skillet/content/sha256/" + digest
 	entrypoint := destination + "/" + info.Name + "/SKILL.md"
 	command := posixCommand(download, digest, destination, info.Name, info.SkillID, info.Commit)
+	sourceType := "git"
+	if strings.HasPrefix(info.RepositoryURL, "file://") {
+		sourceType = "local"
+	}
 	if shell == "powershell" {
 		destination = "$env:LOCALAPPDATA\\Skillet\\Cache\\content\\sha256\\" + digest
 		entrypoint = destination + "\\" + info.Name + "\\SKILL.md"
@@ -645,7 +649,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	}{shell, command}, Lockfile: struct {
 		Path  string         `json:"path"`
 		Entry map[string]any `json:"entry"`
-	}{"skillet-lock.json", map[string]any{"name": info.Name, "version": info.Version, "source": map[string]any{"type": "git", "repositoryId": displayRepositoryID, "repositoryUrl": safeRepositoryURL(info.RepositoryURL), "path": info.Path}, "resolved": map[string]any{"commit": info.Commit, "tree": info.Tree}, "integrity": map[string]any{"algorithm": "sha256", "archive": digest, "format": format}}}, NextAction: "Execute the fixed materialization command, verify success, then read the returned SKILL.md entrypoint."}
+	}{"skillet-lock.json", map[string]any{"name": info.Name, "version": info.Version, "source": map[string]any{"type": sourceType, "repositoryId": displayRepositoryID, "repositoryUrl": safeRepositoryURL(info.RepositoryURL), "path": info.Path}, "resolved": map[string]any{"commit": info.Commit, "tree": info.Tree}, "integrity": map[string]any{"algorithm": "sha256", "archive": digest, "format": format}}}, NextAction: "Execute the fixed materialization command, verify success, then read the returned SKILL.md entrypoint."}
 	s.recordAudit(ctx, organizationID, "materialisation_prepared", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "archive_sha256": digest, "format": format})
 	if lockedRestore {
 		s.recordAudit(ctx, organizationID, "locked_revision_restored", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "archive_sha256": digest, "format": format})

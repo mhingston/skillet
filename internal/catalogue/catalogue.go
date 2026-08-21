@@ -68,6 +68,24 @@ func New(db *sql.DB, packages ...*packagestore.Store) *Store {
 	return s
 }
 
+// EnsureRepository makes an admitted source addressable before polling audit
+// events are emitted. This is important for valid empty sources, where there
+// is no skill admission transaction to create the repository row.
+func (s *Store) EnsureRepository(ctx context.Context, repo Repository) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("catalogue database is required")
+	}
+	if repo.OrganizationID == "" || repo.ID == "" {
+		return fmt.Errorf("repository organization and id are required")
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO organizations(id) VALUES (?) ON CONFLICT(id) DO NOTHING`, repo.OrganizationID)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO repositories(id, organization_id, url, tracked_ref, trust_level, owner) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET url=excluded.url, tracked_ref=excluded.tracked_ref, trust_level=excluded.trust_level, owner=excluded.owner`, repo.OrganizationID+"/"+repo.ID, repo.OrganizationID, repo.URL, repo.Ref, repo.TrustLevel, repo.Owner)
+	return err
+}
+
 func RevisionID(organizationID, repositoryID, relativePath, commitSHA, treeSHA string) string {
 	sum := sha256.Sum256([]byte(organizationID + "\x00" + repositoryID + "\x00" + relativePath + "\x00" + commitSHA + "\x00" + treeSHA))
 	return "rev_" + hex.EncodeToString(sum[:16])

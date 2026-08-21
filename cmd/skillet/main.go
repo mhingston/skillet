@@ -187,19 +187,37 @@ func main() {
 		for _, configured := range c.Repositories {
 			repo := configured
 			go func() {
-				mirror := gitstore.NewMirror(filepath.Join(c.Server.DataDir, "repositories", repo.ID+".git"))
+				var source gitstore.Source
+				var mirror *gitstore.Mirror
+				if repo.Path != "" {
+					local, sourceErr := gitstore.NewLocalSource(repo.Path)
+					if sourceErr != nil {
+						slog.Error("local repository source failed", "repository", repo.ID, "error", sourceErr)
+						stop()
+						return
+					}
+					source = local
+				} else {
+					mirror = gitstore.NewMirror(filepath.Join(c.Server.DataDir, "repositories", repo.ID+".git"))
+					source = mirror
+				}
 				rules := make([]discovery.MetadataRule, 0, len(repo.SearchExclusions))
 				for _, rule := range repo.SearchExclusions {
 					rules = append(rules, discovery.MetadataRule{Key: rule.MetadataKey, Equals: rule.Equals})
 				}
 				syncRepo := catalogue.Repository{ID: repo.ID, OrganizationID: c.Organization.ID, URL: repo.URL, Ref: repo.Ref, TrustLevel: repo.TrustLevel, Owner: repo.Owner}
+				if err := catalog.EnsureRepository(ctx, syncRepo); err != nil {
+					slog.Error("repository registration failed", "repository", repo.ID, "error", err)
+					stop()
+					return
+				}
 				coordinator := polling.Coordinator{
 					State: pollState, Leases: pollLeases,
 					Audit: func(auditCtx context.Context, event string, audited polling.Repository, details map[string]any) error {
 						if details == nil {
 							details = map[string]any{}
 						}
-						details["repository_id"] = audited.ID
+						details["repository_id"] = audited.OrganizationID + "/" + audited.ID
 						auditErr := catalog.RecordAudit(auditCtx, audited.OrganizationID, event, details)
 						metrics := app.Metrics()
 						switch event {
@@ -225,13 +243,15 @@ func main() {
 						app.ObserveRepositorySync(duration, syncErr == nil && result.Outcome == polling.Synchronized)
 					},
 					Resolve: func(ctx context.Context, _ polling.Repository) (string, error) {
-						if err := mirror.Init(ctx, repo.URL); err != nil {
-							return "", err
+						if mirror != nil {
+							if err := mirror.Init(ctx, repo.URL); err != nil {
+								return "", err
+							}
 						}
-						return mirror.Fetch(ctx, repo.Ref)
+						return source.Fetch(ctx, repo.Ref)
 					},
 					Sync: func(ctx context.Context, _ polling.Repository, commit string) (polling.SyncResult, error) {
-						result, err := ingest.SyncAtCommitWithOptions(ctx, mirror, syncRepo, packageStore, catalog, commit, ingest.Options{Include: repo.Include, Exclude: repo.Exclude, SearchExclusions: rules, PackageLimits: packagebuilder.Limits{MaxFiles: c.Packages.MaxFiles, MaxFileBytes: c.Packages.MaxFileBytes, MaxTotalBytes: c.Packages.MaxUncompressedBytes, MaxArchiveBytes: c.Packages.MaxArchiveBytes}})
+						result, err := ingest.SyncAtCommitWithOptions(ctx, source, syncRepo, packageStore, catalog, commit, ingest.Options{Include: repo.Include, Exclude: repo.Exclude, SearchExclusions: rules, PackageLimits: packagebuilder.Limits{MaxFiles: c.Packages.MaxFiles, MaxFileBytes: c.Packages.MaxFileBytes, MaxTotalBytes: c.Packages.MaxUncompressedBytes, MaxArchiveBytes: c.Packages.MaxArchiveBytes}})
 						return polling.SyncResult{Commit: result.Commit, Admitted: result.Admitted, Quarantined: result.Quarantined}, err
 					},
 				}

@@ -85,7 +85,7 @@ func (r *Restorer) resolve(ctx context.Context, skillID string, entry lockfile.E
 	if skillID == "" {
 		return Package{}, fmt.Errorf("skill ID is required")
 	}
-	if entry.Source.Type != "git" {
+	if entry.Source.Type != "git" && entry.Source.Type != "local" {
 		return Package{}, fmt.Errorf("unsupported source type %q", entry.Source.Type)
 	}
 	if entry.Source.RepositoryID == "" || entry.Source.Path == "" {

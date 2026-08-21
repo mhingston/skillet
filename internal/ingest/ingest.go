@@ -35,11 +35,11 @@ func gitMode(mode string) int64 {
 	return 0644
 }
 
-func SyncOnce(ctx context.Context, mirror *gitstore.Mirror, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, ref string) (Result, error) {
+func SyncOnce(ctx context.Context, mirror gitstore.Source, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, ref string) (Result, error) {
 	return SyncOnceWithOptions(ctx, mirror, repo, packages, catalog, ref, Options{Include: []string{"**/SKILL.md"}})
 }
 
-func SyncOnceWithOptions(ctx context.Context, mirror *gitstore.Mirror, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, ref string, options Options) (Result, error) {
+func SyncOnceWithOptions(ctx context.Context, mirror gitstore.Source, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, ref string, options Options) (Result, error) {
 	if mirror == nil || packages == nil || catalog == nil {
 		return Result{}, fmt.Errorf("mirror, package store, and catalogue are required")
 	}
@@ -52,7 +52,7 @@ func SyncOnceWithOptions(ctx context.Context, mirror *gitstore.Mirror, repo cata
 
 // SyncAtCommitWithOptions admits exactly commit. The caller is responsible
 // for resolving and fetching the commit into the mirror first.
-func SyncAtCommitWithOptions(ctx context.Context, mirror *gitstore.Mirror, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, commit string, options Options) (Result, error) {
+func SyncAtCommitWithOptions(ctx context.Context, mirror gitstore.Source, repo catalogue.Repository, packages *packagestore.Store, catalog *catalogue.Store, commit string, options Options) (Result, error) {
 	if mirror == nil || packages == nil || catalog == nil {
 		return Result{}, fmt.Errorf("mirror, package store, and catalogue are required")
 	}

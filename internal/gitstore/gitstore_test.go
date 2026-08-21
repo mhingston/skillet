@@ -2,9 +2,48 @@ package gitstore
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestLocalSourceSnapshotsPlainDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "plan"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("---\nname: plan\ndescription: Make plans\n---\n# Plan\n")
+	if err := os.WriteFile(filepath.Join(root, "plan", "SKILL.md"), content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	source, err := NewLocalSource(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := source.Fetch(context.Background(), "working-tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := source.ListTree(context.Background(), commit)
+	if err != nil || len(entries) != 1 || entries[0].Path != "plan/SKILL.md" {
+		t.Fatalf("entries = %+v, err = %v", entries, err)
+	}
+	blob, err := source.ReadBlob(context.Background(), entries[0].ObjectID)
+	if err != nil || string(blob) != string(content) {
+		t.Fatalf("blob = %q, err = %v", blob, err)
+	}
+	tree, err := source.TreeID(context.Background(), commit, "plan")
+	if err != nil || !strings.HasPrefix(tree, "local-tree-") {
+		t.Fatalf("tree = %q, err = %v", tree, err)
+	}
+	if _, err := source.Fetch(context.Background(), "working-tree"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.ListTree(context.Background(), "old-snapshot"); err == nil {
+		t.Fatal("stale local snapshot unexpectedly available")
+	}
+}
 
 type fakeRunner struct {
 	calls   []string

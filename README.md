@@ -31,6 +31,22 @@ go vet ./...
 go run ./cmd/skillet -config skillet.example.yaml
 ```
 
+### Local skill sources
+
+Repositories may be configured from a plain local directory. Git is not
+required for local sources; Skillet creates a deterministic content-based
+snapshot identity for each scan and does not modify the source directory.
+
+```yaml
+repositories:
+  - id: local-skills
+    path: /Users/example/skills
+    poll_interval: 1m
+```
+
+Use `url` and `ref` for remote Git repositories. A repository must specify
+exactly one of `url` or `path`; local paths default to the `working-tree` ref.
+
 The example starts in explicit development mode with no external database or model provider. Endpoints are `/healthz`, `/readyz`, `/metrics`, and `/mcp`. Production deployments must configure OIDC or static bearer authentication and signing keys.
 
 ## Product boundary

@@ -81,3 +81,21 @@ func TestLoadRejectsRepositoryURLCredentials(t *testing.T) {
 		t.Fatalf("got %v, want repository credential rejection", err)
 	}
 }
+
+func TestLoadAcceptsPlainLocalRepositoryPath(t *testing.T) {
+	path := t.TempDir()
+	c, err := Load(writeConfig(t, "organization:\n  id: demo\nauth:\n  mode: development\nrepositories:\n  - id: local-skills\n    path: "+path+"\n    poll_interval: 1m\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Repositories[0].Path != path || c.Repositories[0].Ref != "working-tree" || !strings.HasPrefix(c.Repositories[0].URL, "file://") {
+		t.Fatalf("local repository defaults: %+v", c.Repositories[0])
+	}
+}
+
+func TestLoadRejectsLocalRepositoryWithURL(t *testing.T) {
+	_, err := Load(writeConfig(t, "organization:\n  id: demo\nauth:\n  mode: development\nrepositories:\n  - id: local-skills\n    url: https://example.com/skills.git\n    path: /tmp/skills\n    ref: main\n    poll_interval: 1m\n"))
+	if err == nil || !strings.Contains(err.Error(), "either url or path") {
+		t.Fatalf("got %v", err)
+	}
+}
