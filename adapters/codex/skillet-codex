@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+: "${SKILLET_MCP_URL:=http://localhost:8080/mcp}"
+: "${SKILLET_CODEX_SKILLS_DIR:=${HOME}/.codex/skills}"
+exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -candidate "$1" -destination "$SKILLET_CODEX_SKILLS_DIR" -harness codex

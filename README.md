@@ -15,9 +15,9 @@ The shipped v1 experience is:
 - **Use:** acquire one or more selected skills with an integrity-checked command and read their `SKILL.md` entrypoints when needed.
 - **Reproduce:** lock exact Git commits and package digests, then restore those same packages on another run or machine.
 
-Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox.
+Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository also ships thin optional host adapters: Pi can activate a verified skill during an interactive session; Claude Code and Codex can materialize one into their supported skill directories for the next host session.
 
-The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, and Prometheus counters.
+The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, Prometheus counters, and optional Pi, Claude Code, and Codex adapters.
 
 ## Local development
 
@@ -33,13 +33,46 @@ The example starts in explicit development mode with no external database or mod
 
 ## Product boundary
 
-The service is intentionally single-node and SQLite-backed in v1. Approved repositories are configured by operators; admitted packages retain exact commits and SHA-256 digests. Skillet will not execute skill scripts, resolve skill dependencies, modify client harness directories, or install a companion client binary.
+The service is intentionally single-node and SQLite-backed in v1. Approved repositories are configured by operators; admitted packages retain exact commits and SHA-256 digests. The core service will not execute skill scripts, resolve skill dependencies, or write to client harness directories. Optional adapters perform an explicit, user-invoked materialization after verifying the returned archive digest.
 
 A compatible MCP host must already provide shell/download capability, outbound HTTPS, permission to write to a user cache outside the repository, and permission to read the extracted `SKILL.md`. Hosts without those capabilities may be search-only. Skillet is not marketed as universally compatible with every MCP client.
 
 The remote materialisation flow returns a signed immutable package URL, a fixed POSIX or PowerShell acquisition command, an external cache destination, and a deterministic `skillet-lock.json` entry. The server never writes to the MCP client filesystem and never executes skill-provided scripts.
 
 See [the implementation handoff](docs/implementation-handoff.md) and [architecture decisions](docs/adr/) for the bounded roadmap and security decisions.
+
+## Harness adapters
+
+MCP provides discovery and immutable package transport. It does not itself
+activate a `SKILL.md` in every host, because skill loading is host-specific.
+The adapters in [`adapters/`](adapters/) provide that last mile while sharing
+the Go materializer and its digest/path checks.
+
+Build the helper:
+
+```sh
+go install ./cmd/skillet-adapter
+```
+
+For Pi, load [`adapters/pi/skillet.ts`](adapters/pi/skillet.ts) as an
+extension. It supports `/skillet search`, `/skillet activate`, and
+`/skillet deactivate`; activation is session-scoped and calls Pi's resource
+reload API without restarting the interactive session. Set `SKILLET_MCP_URL`
+and `SKILLET_ADAPTER_BIN` when the defaults are not suitable.
+
+For Claude Code and Codex, pass a selected candidate ID to the corresponding
+wrapper:
+
+```sh
+adapters/claude-code/skillet-claude <candidate-id>
+adapters/codex/skillet-codex <candidate-id>
+```
+
+They default to `~/.claude/skills` and `~/.codex/skills` respectively. These
+hosts discover skills at process/session boundaries, so their JSON result sets
+`reload_required: true`; begin a new session before relying on the skill.
+Use `SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`, and
+`SKILLET_TOKEN` for overrides.
 
 ## How it works
 
@@ -92,7 +125,7 @@ The v1 service intentionally stops at a coherent single-node registry. The follo
 - **Distribution and provenance:** package signatures or attestations, object-storage-backed packages, formal manifests, publisher identity, cross-registry federation, and stronger restoration policies.
 - **Security integrations at the trust boundary:** optional integration with an organisation’s existing repository or marketplace scanners, policy engines, SARIF pipelines, and approval records. Skillet should consume trusted decisions rather than become a general-purpose malware scanner or execution sandbox.
 - **Lifecycle and compatibility:** per-skill versions, changelogs, breaking-change guidance, compatibility records across models and hosts, replacement skills, and retained-version policies.
-- **Client integrations:** native host materialisation, automatic resource-link downloads, harness-specific activation adapters, and lockfile maintenance by capable MCP hosts.
+- **Client integrations:** native host materialisation, automatic resource-link downloads, deeper harness lifecycle integration, and lockfile maintenance by capable MCP hosts. The initial Pi, Claude Code, and Codex adapters are intentionally thin and explicit.
 - **Operations and scale:** PostgreSQL or object storage adapters, distributed search, horizontal deployment, backup/restore tooling, richer dashboards, and additional MCP client compatibility testing.
 
 These items should be driven by pilot evidence. Skill execution, dependency resolution, automatic activation, public submissions, workflow orchestration, and a general-purpose security marketplace remain outside Skillet’s product boundary unless that boundary is deliberately revisited.
