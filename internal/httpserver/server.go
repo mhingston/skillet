@@ -256,8 +256,22 @@ func (s *Server) Handler(mcpPath string, maxBodyBytes int64, auth ...AuthConfig)
 			return nil, placeholderMaterializeOutput{Status: "not_implemented"}, nil
 		})
 	} else {
+		materializeTool := &mcp.Tool{Name: "materialize_skill", Description: "Materialize one selected skill. Use candidate_id from search_skills, or stable skill_id from list_skills together with exactly one version or range. For macOS use client os=macos and shell=posix. Execute only the fixed returned command and verify its digest."}
+		materializeSchema, err := jsonschema.For[materializeInput](nil)
+		if err != nil {
+			panic(fmt.Sprintf("materialize_skill schema: %v", err))
+		}
+		if clientSchema := materializeSchema.Properties["client"]; clientSchema != nil {
+			if osSchema := clientSchema.Properties["os"]; osSchema != nil {
+				osSchema.Enum = []any{"linux", "macos", "windows"}
+			}
+			if shellSchema := clientSchema.Properties["shell"]; shellSchema != nil {
+				shellSchema.Enum = []any{"posix", "powershell"}
+			}
+		}
+		materializeTool.InputSchema = materializeSchema
 		mcp.AddTool(mcpServer, &mcp.Tool{Name: "resolve_skill", Description: "Resolve an exact SemVer or range to one immutable revision."}, s.resolveTool)
-		mcp.AddTool(mcpServer, &mcp.Tool{Name: "materialize_skill", Description: "Prepare acquisition of one selected candidate. Execute only the fixed returned command, verify its digest, then read the returned SKILL.md."}, s.materializeTool)
+		mcp.AddTool(mcpServer, materializeTool, s.materializeTool)
 	}
 	if maxBodyBytes <= 0 {
 		maxBodyBytes = 1 << 20
@@ -519,15 +533,15 @@ func (s *Server) searchTool(ctx context.Context, _ *mcp.CallToolRequest, input s
 }
 
 type materializeInput struct {
-	CandidateID string       `json:"candidate_id,omitempty"`
-	SkillID     string       `json:"skill_id,omitempty"`
-	Version     string       `json:"version,omitempty"`
-	Range       string       `json:"range,omitempty"`
+	CandidateID string       `json:"candidate_id,omitempty" jsonschema:"Candidate ID returned by search_skills"`
+	SkillID     string       `json:"skill_id,omitempty" jsonschema:"Stable skill ID returned by list_skills, used with version or range"`
+	Version     string       `json:"version,omitempty" jsonschema:"Exact SemVer, used with skill_id"`
+	Range       string       `json:"range,omitempty" jsonschema:"SemVer range, used with skill_id"`
 	Locked      *lockedInput `json:"locked,omitempty"`
 	Client      struct {
-		OS    string `json:"os"`
-		Shell string `json:"shell"`
-	} `json:"client"`
+		OS    string `json:"os" jsonschema:"Target OS: linux, macos, or windows"`
+		Shell string `json:"shell" jsonschema:"Target shell: posix or powershell"`
+	} `json:"client" jsonschema:"Client platform used to choose the package and acquisition command"`
 }
 type lockedInput struct {
 	SkillID       string `json:"skill_id"`

@@ -14,6 +14,7 @@ import (
 
 type Document struct {
 	ID             string            `json:"id"`
+	SkillID        string            `json:"skill_id,omitempty"`
 	Name           string            `json:"name"`
 	Description    string            `json:"description"`
 	Version        string            `json:"version,omitempty"`

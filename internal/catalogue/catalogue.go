@@ -309,18 +309,18 @@ func (s *Store) MarkMissingFromSource(ctx context.Context, repo Repository, pres
 }
 
 func (s *Store) RoutingDocuments(ctx context.Context, organizationID string, searchableMetadataKeys ...[]string) ([]search.Document, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT r.id, r.name, r.description, r.compatibility, r.metadata_json, COALESCE(r.version, ''), sk.searchable, sk.repository_id, sk.relative_path, r.commit_sha, r.tree_sha, repo.trust_level, r.has_scripts FROM skill_revisions r JOIN skills sk ON sk.active_revision_id=r.id JOIN repositories repo ON repo.id=sk.repository_id WHERE sk.organization_id=? AND r.state='active' AND sk.searchable=1`, organizationID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT r.id, sk.id, r.name, r.description, r.compatibility, r.metadata_json, COALESCE(r.version, ''), sk.searchable, sk.repository_id, sk.relative_path, r.commit_sha, r.tree_sha, repo.trust_level, r.has_scripts FROM skill_revisions r JOIN skills sk ON sk.active_revision_id=r.id JOIN repositories repo ON repo.id=sk.repository_id WHERE sk.organization_id=? AND r.state='active' AND sk.searchable=1`, organizationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var docs []search.Document
 	for rows.Next() {
-		var id, name, description, compatibility, metadata string
+		var id, skillID, name, description, compatibility, metadata string
 		var searchable, hasScripts int
 		var version string
 		var repositoryID, path, commit, tree, trustLevel string
-		if err := rows.Scan(&id, &name, &description, &compatibility, &metadata, &version, &searchable, &repositoryID, &path, &commit, &tree, &trustLevel, &hasScripts); err != nil {
+		if err := rows.Scan(&id, &skillID, &name, &description, &compatibility, &metadata, &version, &searchable, &repositoryID, &path, &commit, &tree, &trustLevel, &hasScripts); err != nil {
 			return nil, err
 		}
 		var values map[string]string
@@ -340,7 +340,7 @@ func (s *Store) RoutingDocuments(ctx context.Context, organizationID string, sea
 			}
 			values = filtered
 		}
-		docs = append(docs, search.Document{ID: id, OrganizationID: organizationID, Name: name, Description: description, Version: version, Compatibility: compatibility, Metadata: values, Searchable: searchable == 1, RepositoryID: strings.TrimPrefix(repositoryID, organizationID+"/"), Path: path, Commit: commit, Tree: tree, TrustLevel: trustLevel, HasScripts: hasScripts == 1})
+		docs = append(docs, search.Document{ID: id, SkillID: skillID, OrganizationID: organizationID, Name: name, Description: description, Version: version, Compatibility: compatibility, Metadata: values, Searchable: searchable == 1, RepositoryID: strings.TrimPrefix(repositoryID, organizationID+"/"), Path: path, Commit: commit, Tree: tree, TrustLevel: trustLevel, HasScripts: hasScripts == 1})
 	}
 	return docs, rows.Err()
 }

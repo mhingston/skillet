@@ -175,8 +175,8 @@ func TestListSkillsReturnsDeterministicPaginatedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, doc := range []search.Document{
-		{ID: "demo/skills/z", OrganizationID: "demo", Name: "zeta", Description: "Z", Searchable: true},
-		{ID: "demo/skills/a", OrganizationID: "demo", Name: "alpha", Description: "A", Searchable: true},
+		{ID: "demo/skills/z", SkillID: "zeta", OrganizationID: "demo", Name: "zeta", Description: "Z", Searchable: true},
+		{ID: "demo/skills/a", SkillID: "alpha", OrganizationID: "demo", Name: "alpha", Description: "A", Searchable: true},
 		{ID: "other/skills/x", OrganizationID: "other", Name: "other", Description: "Other", Searchable: true},
 	} {
 		if err := index.Add(doc); err != nil {
@@ -188,7 +188,7 @@ func TestListSkillsReturnsDeterministicPaginatedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Total != 2 || len(out.Skills) != 1 || out.Skills[0].Name != "alpha" || !out.HasMore {
+	if out.Total != 2 || len(out.Skills) != 1 || out.Skills[0].Name != "alpha" || out.Skills[0].SkillID != "alpha" || !out.HasMore {
 		t.Fatalf("list output = %+v", out)
 	}
 	_, page, err := s.listSkillsTool(context.Background(), nil, listSkillsInput{Limit: 1, Offset: 1})
