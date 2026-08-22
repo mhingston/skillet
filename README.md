@@ -18,9 +18,9 @@ The shipped v1 experience is:
 
 Skills may optionally declare `metadata.version` using SemVer 2.0. Exact versions and ranges resolve once to one retained immutable revision; ranges choose the highest stable declared version. Prereleases require an explicit prerelease selector. Unversioned skills remain valid, Git tags are not version authority, and there are no automatic upgrades or dependency resolution. Lockfile commit, tree, and archive SHA-256 fields remain authoritative.
 
-Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository also ships thin optional host adapters: Pi can activate a verified skill during an interactive session; Claude Code and Codex can materialize one into their supported skill directories for the next host session.
+Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository also ships thin optional host adapters: Pi can activate a verified skill during an interactive session; Claude Code, Codex, and OpenCode can materialize one into their supported skill directories.
 
-The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, Prometheus counters, and optional Pi, Claude Code, and Codex adapters.
+The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, audit events, Prometheus counters, and optional Pi, Claude Code, Codex, and OpenCode adapters.
 
 ## Local development
 
@@ -97,6 +97,7 @@ user-level skill directory. For example:
 ```sh
 cp -R skills/find-skills ~/.claude/skills/find-skills
 cp -R skills/find-skills ~/.codex/skills/find-skills
+cp -R skills/find-skills ~/.config/opencode/skills/find-skills
 ```
 
 Use the equivalent supported skill directory for other hosts. This bootstrap
@@ -140,19 +141,21 @@ extension. It supports `/skillet search`, `/skillet activate`, and
 reload API without restarting the interactive session. Set `SKILLET_MCP_URL`
 and `SKILLET_ADAPTER_BIN` when the defaults are not suitable.
 
-For Claude Code and Codex, pass a selected candidate ID to the corresponding
-wrapper:
+For Claude Code, Codex, and OpenCode, pass a selected candidate ID to the
+corresponding wrapper:
 
 ```sh
 adapters/claude-code/skillet-claude <candidate-id>
 adapters/codex/skillet-codex <candidate-id>
+adapters/opencode/skillet-opencode <candidate-id>
 ```
 
-They default to `~/.claude/skills` and `~/.codex/skills` respectively. These
-hosts discover skills at process/session boundaries, so their JSON result sets
-`reload_required: true`; begin a new session before relying on the skill.
-Use `SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`, and
-`SKILLET_TOKEN` for overrides.
+They default to `~/.claude/skills`, `~/.codex/skills`, and
+`~/.config/opencode/skills` respectively. These hosts discover skills at
+process/session boundaries, so their JSON result sets `reload_required: true`;
+begin a new session before relying on the skill. Use
+`SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`,
+`SKILLET_OPENCODE_SKILLS_DIR`, and `SKILLET_TOKEN` for overrides.
 
 Adapters also accept `skill-id@1.2.3` or `skill-id@^1.2`; this is a one-time
 resolution and materialization, not an upgrade policy.
@@ -208,7 +211,7 @@ The v1 service intentionally stops at a coherent single-node registry. The follo
 - **Distribution and provenance:** package signatures or attestations, object-storage-backed packages, formal manifests, publisher identity, cross-registry federation, and stronger restoration policies.
 - **Security integrations at the trust boundary:** optional integration with an organisation’s existing repository or marketplace scanners, policy engines, SARIF pipelines, and approval records. Skillet should consume trusted decisions rather than become a general-purpose malware scanner or execution sandbox.
 - **Lifecycle and compatibility:** per-skill versions, changelogs, breaking-change guidance, compatibility records across models and hosts, replacement skills, and retained-version policies.
-- **Client integrations:** native host materialisation, automatic resource-link downloads, deeper harness lifecycle integration, and lockfile maintenance by capable MCP hosts. The initial Pi, Claude Code, and Codex adapters are intentionally thin and explicit.
+- **Client integrations:** native host materialisation, automatic resource-link downloads, deeper harness lifecycle integration, and lockfile maintenance by capable MCP hosts. The initial Pi, Claude Code, Codex, and OpenCode adapters are intentionally thin and explicit.
 - **Operations and scale:** PostgreSQL or object storage adapters, distributed search, horizontal deployment, backup/restore tooling, richer dashboards, and additional MCP client compatibility testing.
 
 These items should be driven by pilot evidence. Skill execution, dependency resolution, automatic activation, public submissions, workflow orchestration, and a general-purpose security marketplace remain outside Skillet’s product boundary unless that boundary is deliberately revisited.
