@@ -211,7 +211,7 @@ The v1 service intentionally stops at a coherent single-node registry. The follo
 - **Client integrations:** native host materialisation, automatic resource-link downloads, deeper harness lifecycle integration, and lockfile maintenance by capable MCP hosts. The initial Pi, Claude Code, and Codex adapters are intentionally thin and explicit.
 - **Operations and scale:** PostgreSQL or object storage adapters, distributed search, horizontal deployment, backup/restore tooling, richer dashboards, and additional MCP client compatibility testing.
 
-These items should be driven by pilot evidence. Skill execution, dependency resolution, automatic activation, public submissions, workflow orchestration, and a general-purpose security marketplace remain outside Skillet's product boundary unless that boundary is deliberately revisited.
+These items should be driven by pilot evidence. Skill execution, dependency resolution, automatic activation, public submissions, workflow orchestration, and a general-purpose security marketplace remain outside Skillet’s product boundary unless that boundary is deliberately revisited.
 
 ## Container deployment
 
