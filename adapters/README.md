@@ -28,9 +28,7 @@ adapters/codex/skillet-codex <candidate-id>
 
 The default destinations are `~/.claude/skills` and `~/.codex/skills`.
 Override them with `SKILLET_CLAUDE_SKILLS_DIR` or `SKILLET_CODEX_SKILLS_DIR`.
-
 The helper verifies the archive digest before replacing the selected skill.
-The host will discover the materialized skill on its next process/session
-boundary.
-
-No host directory is modified until the corresponding adapter command is run.
+These hosts discover skills at process/session boundaries, so the command
+reports `reload_required: true`; start a new host session before relying on the
+activated skill. No host directory is modified until this command is run.
