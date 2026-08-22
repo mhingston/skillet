@@ -17,25 +17,20 @@ Load `pi/skillet.ts` as a Pi extension and ensure `skillet-adapter` is on
 Activation is session-scoped. Pi reloads its resources immediately, so the
 skill is available without restarting the interactive session.
 
-## Claude Code, Codex, and GitHub Copilot
+## Claude Code and Codex
 
 Build the helper with `go install ./cmd/skillet-adapter`, then run:
 
 ```sh
 adapters/claude-code/skillet-claude <candidate-id>
 adapters/codex/skillet-codex <candidate-id>
-adapters/github-copilot/skillet-copilot <candidate-id>
 ```
 
-The default destinations are `~/.claude/skills`, `~/.codex/skills`, and
-`~/.copilot/skills` respectively. Override them with
-`SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`, or
-`SKILLET_COPILOT_SKILLS_DIR`.
+The default destinations are `~/.claude/skills` and `~/.codex/skills`.
+Override them with `SKILLET_CLAUDE_SKILLS_DIR` or `SKILLET_CODEX_SKILLS_DIR`.
 
 The helper verifies the archive digest before replacing the selected skill.
-These wrappers report `reload_required: true` because materialization happens
-outside the running host process. Start a new host session before relying on a
-newly activated skill. In GitHub Copilot CLI, `/skills reload` can refresh an
-existing interactive session instead.
+The host will discover the materialized skill on its next process/session
+boundary.
 
 No host directory is modified until the corresponding adapter command is run.
