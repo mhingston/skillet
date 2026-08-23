@@ -12,6 +12,8 @@ import (
 	"github.com/blevesearch/bleve/v2"
 )
 
+const semanticNeighborLimit = 3
+
 type Document struct {
 	ID             string            `json:"id"`
 	SkillID        string            `json:"skill_id,omitempty"`
@@ -40,13 +42,19 @@ type Filters struct {
 type Embedder interface {
 	Embed(string) ([]float32, error)
 }
+type SemanticNeighbor struct {
+	Skill      Document `json:"skill"`
+	Similarity float64  `json:"similarity"`
+	Evidence   string   `json:"evidence"`
+}
 type Hit struct {
-	ID                      string   `json:"-"`
-	Score                   float64  `json:"-"`
-	LexicalRank, VectorRank int      `json:"-"`
-	Rank                    int      `json:"rank"`
-	MatchedFields           []string `json:"matched_fields"`
-	Reason                  string   `json:"reason,omitempty"`
+	ID                      string             `json:"-"`
+	Score                   float64            `json:"-"`
+	LexicalRank, VectorRank int                `json:"-"`
+	Rank                    int                `json:"rank"`
+	MatchedFields           []string           `json:"matched_fields"`
+	Reason                  string             `json:"reason,omitempty"`
+	SemanticNeighbors       []SemanticNeighbor `json:"semantic_neighbors,omitempty"`
 }
 type Index struct {
 	mu                sync.RWMutex
@@ -247,8 +255,54 @@ func (i *Index) SearchWithFilters(query string, lexicalDepth, vectorDepth, limit
 	}
 	for n := range result {
 		result[n].Rank = n + 1
+		result[n].SemanticNeighbors = i.semanticNeighborsLocked(i.docs[result[n].ID], filters, semanticNeighborLimit)
 	}
 	return result, degraded, nil
+}
+
+func (i *Index) semanticNeighborsLocked(source Document, filters Filters, limit int) []SemanticNeighbor {
+	if limit < 1 || len(source.Vector) == 0 {
+		return nil
+	}
+	type scored struct {
+		doc   Document
+		score float64
+	}
+	all := make([]scored, 0, len(i.docs))
+	for _, doc := range i.docs {
+		if !doc.Searchable || doc.ID == source.ID || len(doc.Vector) == 0 || !matches(doc, filters) {
+			continue
+		}
+		if source.OrganizationID != "" && doc.OrganizationID != "" && doc.OrganizationID != source.OrganizationID {
+			continue
+		}
+		if source.SkillID != "" && doc.SkillID == source.SkillID {
+			continue
+		}
+		score := cosine(source.Vector, doc.Vector)
+		if score <= 0 {
+			continue
+		}
+		doc.Vector = nil
+		all = append(all, scored{doc: doc, score: score})
+	}
+	sort.Slice(all, func(a, b int) bool {
+		if all[a].score == all[b].score {
+			if all[a].doc.SkillID == all[b].doc.SkillID {
+				return all[a].doc.ID < all[b].doc.ID
+			}
+			return all[a].doc.SkillID < all[b].doc.SkillID
+		}
+		return all[a].score > all[b].score
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	neighbors := make([]SemanticNeighbor, 0, len(all))
+	for _, item := range all {
+		neighbors = append(neighbors, SemanticNeighbor{Skill: item.doc, Similarity: item.score, Evidence: "routing_embedding_cosine"})
+	}
+	return neighbors
 }
 
 func matches(doc Document, filters Filters) bool {
