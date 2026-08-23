@@ -1,0 +1,70 @@
+name: bootstrap-v1.0.0
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: v1.0.0
+      TARGET_COMMIT: e2502254f4ee6d5d736a5eb42523453456b6f945
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Ensure v1.0.0 tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            existing_commit="$(git rev-list -n 1 "${TAG}")"
+            if [[ "${existing_commit}" != "${TARGET_COMMIT}" ]]; then
+              echo "${TAG} already exists at ${existing_commit}; expected ${TARGET_COMMIT}. Refusing to move a release tag."
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" "${TARGET_COMMIT}" -m "Skillet ${TAG}"
+            git push origin "${TAG}"
+          fi
+
+          git checkout "${TAG}"
+
+      - name: Check for existing GitHub release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up Go
+        if: steps.release.outputs.exists != 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Publish v1.0.0
+        if: steps.release.outputs.exists != 'true'
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
