@@ -272,6 +272,7 @@ func (s *Server) Handler(mcpPath string, maxBodyBytes int64, auth ...AuthConfig)
 		materializeTool.InputSchema = materializeSchema
 		mcp.AddTool(mcpServer, &mcp.Tool{Name: "resolve_skill", Description: "Resolve an exact SemVer or range to one immutable revision."}, s.resolveTool)
 		mcp.AddTool(mcpServer, materializeTool, s.materializeTool)
+		mcp.AddTool(mcpServer, &mcp.Tool{Name: "report_skill_lifecycle", Description: "Report an optional host-observed lifecycle event for the exact immutable revision returned by materialize_skill. This records evidence only; it does not execute or rank skills."}, s.lifecycleTool)
 	}
 	if maxBodyBytes <= 0 {
 		maxBodyBytes = 1 << 20
@@ -583,6 +584,7 @@ type materializeOutput struct {
 	Skill       materializeSkill     `json:"skill"`
 	Resolved    materializeResolved  `json:"resolved"`
 	Package     materializePackage   `json:"package"`
+	Lifecycle   lifecycleReference   `json:"lifecycle"`
 	Variants    []materializeVariant `json:"variants,omitempty"`
 	Destination struct {
 		Directory  string `json:"directory"`
@@ -628,6 +630,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, materializeOutput{}, fmt.Errorf("unsupported client shell %q", input.Client.Shell)
 	}
 	var info catalogue.RevisionInfo
+	originQueryID := ""
 	lockedRestore := false
 	clientOmitted := input.Client.OS == "" && input.Client.Shell == ""
 	format, shell := "tar.gz", "posix"
@@ -670,6 +673,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		if err != nil {
 			return nil, materializeOutput{}, err
 		}
+		originQueryID = p.QueryID
 		var resolveErr error
 		info, resolveErr = s.catalogue.Revision(ctx, organizationID, p.RevisionID)
 		if resolveErr != nil {
@@ -726,7 +730,8 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		command = powershellCommand(download, digest, destination, info.Name, info.SkillID, info.Commit)
 	}
 	displayRepositoryID := strings.TrimPrefix(info.RepositoryID, organizationID+"/")
-	out := materializeOutput{Status: "materialization_required", Skill: materializeSkill{ID: info.SkillID, Name: info.Name, Version: info.Version}, Resolved: materializeResolved{RepositoryID: displayRepositoryID, Path: info.Path, Commit: info.Commit, Tree: info.Tree}, Package: materializePackage{ResourceURI: download, DownloadURL: download, Format: format, ArchiveSHA256: digest, SizeBytes: size, ExpiresAt: expires}, Destination: struct {
+	materializationID, _ := RequestID(ctx)
+	out := materializeOutput{Status: "materialization_required", Skill: materializeSkill{ID: info.SkillID, Name: info.Name, Version: info.Version}, Resolved: materializeResolved{RepositoryID: displayRepositoryID, Path: info.Path, Commit: info.Commit, Tree: info.Tree}, Package: materializePackage{ResourceURI: download, DownloadURL: download, Format: format, ArchiveSHA256: digest, SizeBytes: size, ExpiresAt: expires}, Lifecycle: lifecycleReference{RevisionID: info.RevisionID, SkillID: info.SkillID, Commit: info.Commit, Tree: info.Tree, ArchiveSHA256: digest, QueryID: originQueryID, MaterializationID: materializationID}, Destination: struct {
 		Directory  string `json:"directory"`
 		Entrypoint string `json:"entrypoint"`
 	}{destination, entrypoint}, Materialization: struct {

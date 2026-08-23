@@ -20,6 +20,8 @@ func main() {
 		search(os.Args[2:])
 	case "materialize":
 		materialize(os.Args[2:])
+	case "lifecycle":
+		lifecycle(os.Args[2:])
 	default:
 		usage()
 	}
@@ -51,7 +53,7 @@ func materialize(args []string) {
 	versionRange := f.String("range", "", "SemVer range")
 	skillID := f.String("skill-id", "", "skill ID for version or range")
 	destination := f.String("destination", "", "host skill directory")
-	harness := f.String("harness", "", "pi, claude, or codex")
+	harness := f.String("harness", "", "pi, claude, codex, copilot, or opencode")
 	_ = f.Parse(args)
 	if (*candidate == "" && *version == "" && *versionRange == "") || (*candidate != "" && (*version != "" || *versionRange != "")) || (*version != "" && *versionRange != "") || ((*version != "" || *versionRange != "") && *skillID == "") || *destination == "" || *harness == "" {
 		fail("exactly one of -candidate, -version, or -range plus -destination and -harness are required")
@@ -64,9 +66,35 @@ func materialize(args []string) {
 	if err != nil {
 		fail(err.Error())
 	}
-	printJSON(map[string]any{"harness": *harness, "skill": out.Skill, "entrypoint": path, "activation": "materialized", "reload_required": *harness != "pi"})
+	printJSON(map[string]any{"harness": *harness, "skill": out.Skill, "entrypoint": path, "lifecycle": out.Lifecycle, "activation": "materialized", "reload_required": *harness != "pi"})
+}
+
+func lifecycle(args []string) {
+	f := flag.NewFlagSet("lifecycle", flag.ExitOnError)
+	server := f.String("server", "http://localhost:8080/mcp", "Skillet MCP endpoint")
+	token := f.String("token", os.Getenv("SKILLET_TOKEN"), "bearer token")
+	reference := f.String("reference", "", "JSON lifecycle reference returned by materialize")
+	event := f.String("event", "", "activated, deactivated, completed, or failed")
+	source := f.String("source", "", "harness or adapter identifier")
+	correlation := f.String("correlation", "", "optional opaque session or run identifier")
+	_ = f.Parse(args)
+	if *reference == "" || *event == "" {
+		fail("-reference and -event are required")
+	}
+	var ref adapter.LifecycleReference
+	if err := json.Unmarshal([]byte(*reference), &ref); err != nil {
+		fail("-reference must be lifecycle JSON returned by materialize")
+	}
+	out, err := (adapter.Client{Server: *server, Token: *token}).ReportLifecycle(context.Background(), ref, *event, *source, *correlation)
+	if err != nil {
+		fail(err.Error())
+	}
+	printJSON(out)
 }
 
 func printJSON(v any)     { b, _ := json.MarshalIndent(v, "", "  "); fmt.Println(string(b)) }
 func fail(message string) { fmt.Fprintln(os.Stderr, message); os.Exit(2) }
-func usage()              { fmt.Fprintln(os.Stderr, "usage: skillet-adapter search|materialize ..."); os.Exit(2) }
+func usage() {
+	fmt.Fprintln(os.Stderr, "usage: skillet-adapter search|materialize|lifecycle ...")
+	os.Exit(2)
+}

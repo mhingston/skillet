@@ -2,6 +2,8 @@
 set -eu
 : "${SKILLET_MCP_URL:=http://localhost:8080/mcp}"
 : "${SKILLET_OPENCODE_SKILLS_DIR:=${HOME}/.config/opencode/skills}"
+if [ "${1:-}" = "lifecycle" ]; then shift; exec skillet-adapter lifecycle -server "$SKILLET_MCP_URL" -source opencode "$@"; fi
+[ "$#" -ge 1 ] || { echo "usage: skillet-opencode <selector> | lifecycle <lifecycle options>" >&2; exit 2; }
 selector="$1"
 if [ "${selector#*@}" != "$selector" ]; then sel="${selector#*@}"; if [ "${sel#^}" != "$sel" ]; then exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -range "$sel" -destination "$SKILLET_OPENCODE_SKILLS_DIR" -harness opencode; else exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -version "$sel" -destination "$SKILLET_OPENCODE_SKILLS_DIR" -harness opencode; fi; fi
 exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -candidate "$selector" -destination "$SKILLET_OPENCODE_SKILLS_DIR" -harness opencode

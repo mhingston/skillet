@@ -15,7 +15,10 @@ Load `pi/skillet.ts` as a Pi extension and ensure `skillet-adapter` is on
 ```
 
 Activation is session-scoped. Pi reloads its resources immediately, so the
-skill is available without restarting the interactive session.
+skill is available without restarting the interactive session. After a
+successful reload Pi reports `activated`; after a successful deactivation
+reload it reports `deactivated`. Telemetry is best-effort and does not control
+whether the skill is active.
 
 ## Claude Code, Codex, GitHub Copilot, and OpenCode
 
@@ -38,3 +41,18 @@ reports `reload_required: true`; start a new host session before relying on the
 activated skill. GitHub Copilot CLI can instead refresh an existing interactive
 session with `/skills reload`. No host directory is modified until this command
 is run.
+
+Materialization results include a `lifecycle` reference bound to the immutable
+revision and package digest. All wrappers expose the same optional reporting
+surface for integrations that can reliably observe host lifecycle events:
+
+```sh
+adapters/claude-code/skillet-claude lifecycle -reference "$LIFECYCLE_JSON" -event activated -correlation "$SESSION_ID"
+adapters/codex/skillet-codex lifecycle -reference "$LIFECYCLE_JSON" -event deactivated -correlation "$SESSION_ID"
+```
+
+The Copilot and OpenCode wrappers support the same `lifecycle` form. Do not
+report `activated` merely because materialization succeeded: report it only
+after the host has actually loaded the skill. Likewise, report `completed` or
+`failed` only when the host can observe that outcome. Lifecycle telemetry is
+optional evidence; it never authorizes execution or changes retrieval ranking.
