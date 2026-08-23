@@ -18,7 +18,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - -s -w -X github.com/mhingston/skillet/internal/httpserver.Version={{ .Version }}
 
 archives:
   - ids:
