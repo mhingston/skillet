@@ -46,7 +46,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("read migration version: %w", err)
 	}
-	if version > 7 {
+	if version > 8 {
 		tx.Rollback()
 		db.Close()
 		return nil, fmt.Errorf("unsupported schema migration version %d", version)
@@ -145,6 +145,19 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("migration 7 schema incomplete")
 		}
 	}
+	if version >= 8 {
+		var exists int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='skill_feedback'").Scan(&exists); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
+		if exists != 1 {
+			tx.Rollback()
+			db.Close()
+			return nil, fmt.Errorf("migration 8 schema incomplete")
+		}
+	}
 	if version == 0 {
 		if _, err = tx.ExecContext(ctx, schema); err != nil {
 			tx.Rollback()
@@ -199,6 +212,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			db.Close()
 			return nil, fmt.Errorf("record migration 3: %w", err)
 		}
+		version = 3
 	}
 	if version < 4 {
 		if _, err = tx.ExecContext(ctx, `CREATE TABLE embedding_cache (provider TEXT NOT NULL, model TEXT NOT NULL, dimensions INTEGER NOT NULL, routing_document_digest TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(provider, model, dimensions, routing_document_digest))`); err != nil {
@@ -211,6 +225,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			db.Close()
 			return nil, fmt.Errorf("record migration 4: %w", err)
 		}
+		version = 4
 	}
 	if version < 5 {
 		for _, column := range migrationFiveColumns {
@@ -260,6 +275,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			db.Close()
 			return nil, fmt.Errorf("record migration 6: %w", err)
 		}
+		version = 6
 	}
 	if version < 7 {
 		if _, err = tx.ExecContext(ctx, `ALTER TABLE skill_revisions ADD COLUMN version TEXT DEFAULT NULL`); err != nil {
@@ -271,6 +287,31 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			tx.Rollback()
 			db.Close()
 			return nil, fmt.Errorf("record migration 7: %w", err)
+		}
+		version = 7
+	}
+	if version < 8 {
+		if _, err = tx.ExecContext(ctx, `CREATE TABLE skill_feedback (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			organization_id TEXT NOT NULL REFERENCES organizations(id),
+			skill_id TEXT NOT NULL REFERENCES skills(id),
+			revision_id TEXT NOT NULL REFERENCES skill_revisions(id),
+			archive_sha256 TEXT NOT NULL,
+			materialization_id TEXT NOT NULL,
+			category TEXT NOT NULL,
+			summary TEXT NOT NULL,
+			correlation_id TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, fmt.Errorf("apply migration 8: %w", err)
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations(version) VALUES (8)"); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, fmt.Errorf("record migration 8: %w", err)
 		}
 	}
 	if err = tx.Commit(); err != nil {

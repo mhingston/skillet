@@ -27,10 +27,22 @@ async function report(pi: ExtensionAPI, lifecycle: any, event: "activated" | "de
 	]);
 }
 
+async function submitFeedback(pi: ExtensionAPI, lifecycle: any, category: string, summary: string): Promise<void> {
+	if (!lifecycle?.revision_id) throw new Error("active skill has no Skillet provenance");
+	await run(pi, [
+		"feedback", "-server", server,
+		"-reference", JSON.stringify(lifecycle),
+		"-category", category,
+		"-summary", summary,
+		"-source", "pi",
+		"-correlation", correlation,
+	]);
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.on("resources_discover", () => ({ skillPaths: [...active.keys()] }));
 	pi.registerCommand("skillet", {
-		description: "Search or activate verified skills from Skillet",
+		description: "Search, activate, deactivate, or report feedback for verified Skillet skills",
 		handler: async (args, ctx) => {
 			const words = args.trim().split(/\s+/).filter(Boolean);
 			const action = words.shift();
@@ -75,7 +87,30 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Deactivated ${words[0]}`, "info");
 				return;
 			}
-			ctx.ui.notify("Usage: /skillet search <query> | /skillet activate <candidate-id or skill-id@version/range> | /skillet deactivate <skill>", "warning");
+			if (action === "feedback" && words.length >= 3) {
+				const skill = words.shift()!;
+				const category = words.shift()!;
+				const summary = words.join(" ");
+				let lifecycle: any;
+				for (const [path, reference] of active) {
+					if (path.endsWith(`/${skill}/SKILL.md`)) {
+						lifecycle = reference;
+						break;
+					}
+				}
+				if (!lifecycle) {
+					ctx.ui.notify(`No active Skillet skill named ${skill}`, "warning");
+					return;
+				}
+				try {
+					await submitFeedback(pi, lifecycle, category, summary);
+					ctx.ui.notify(`Recorded feedback for ${skill}`, "info");
+				} catch (error: any) {
+					ctx.ui.notify(`Feedback failed: ${error?.message ?? error}`, "warning");
+				}
+				return;
+			}
+			ctx.ui.notify("Usage: /skillet search <query> | /skillet activate <candidate-id or skill-id@version/range> | /skillet deactivate <skill> | /skillet feedback <skill> <category> <summary>", "warning");
 		},
 	});
 }

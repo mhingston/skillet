@@ -66,6 +66,33 @@ type LifecycleResult struct {
 	RevisionID string `json:"revision_id"`
 }
 
+type FeedbackResult struct {
+	Status     string `json:"status"`
+	FeedbackID int64  `json:"feedback_id"`
+	RevisionID string `json:"revision_id"`
+	Category   string `json:"category"`
+}
+
+type FeedbackRecord struct {
+	ID                int64  `json:"id"`
+	SkillID           string `json:"skill_id"`
+	RevisionID        string `json:"revision_id"`
+	ArchiveSHA256     string `json:"archive_sha256"`
+	MaterializationID string `json:"materialization_id"`
+	Category          string `json:"category"`
+	Summary           string `json:"summary"`
+	CorrelationID     string `json:"correlation_id,omitempty"`
+	Source            string `json:"source,omitempty"`
+	CreatedAt         string `json:"created_at"`
+}
+
+type FeedbackListResult struct {
+	Feedback []FeedbackRecord `json:"feedback"`
+	Offset   int              `json:"offset"`
+	Limit    int              `json:"limit"`
+	HasMore  bool             `json:"has_more"`
+}
+
 func (c Client) connect(ctx context.Context) (*mcp.ClientSession, error) {
 	hc := &http.Client{Transport: bearerTransport{base: http.DefaultTransport, token: c.Token}}
 	client := mcp.NewClient(&mcp.Implementation{Name: "skillet-adapter", Version: "1"}, nil)
@@ -167,6 +194,58 @@ func (c Client) ReportLifecycle(ctx context.Context, lifecycle LifecycleReferenc
 		return LifecycleResult{}, fmt.Errorf("report_skill_lifecycle returned an error")
 	}
 	var out LifecycleResult
+	if err := decodeStructured(r.StructuredContent, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (c Client) ReportFeedback(ctx context.Context, lifecycle LifecycleReference, category, summary, source, correlationID string) (FeedbackResult, error) {
+	s, err := c.connect(ctx)
+	if err != nil {
+		return FeedbackResult{}, err
+	}
+	defer s.Close()
+	r, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "report_skill_feedback", Arguments: map[string]any{
+		"lifecycle": lifecycle, "category": category, "summary": summary, "source": source, "correlation_id": correlationID,
+	}})
+	if err != nil {
+		return FeedbackResult{}, err
+	}
+	if r.IsError {
+		return FeedbackResult{}, fmt.Errorf("report_skill_feedback returned an error")
+	}
+	var out FeedbackResult
+	if err := decodeStructured(r.StructuredContent, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (c Client) ListFeedback(ctx context.Context, skillID, revisionID, category string, limit, offset int) (FeedbackListResult, error) {
+	s, err := c.connect(ctx)
+	if err != nil {
+		return FeedbackListResult{}, err
+	}
+	defer s.Close()
+	args := map[string]any{"limit": limit, "offset": offset}
+	if skillID != "" {
+		args["skill_id"] = skillID
+	}
+	if revisionID != "" {
+		args["revision_id"] = revisionID
+	}
+	if category != "" {
+		args["category"] = category
+	}
+	r, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "list_skill_feedback", Arguments: args})
+	if err != nil {
+		return FeedbackListResult{}, err
+	}
+	if r.IsError {
+		return FeedbackListResult{}, fmt.Errorf("list_skill_feedback returned an error")
+	}
+	var out FeedbackListResult
 	if err := decodeStructured(r.StructuredContent, &out); err != nil {
 		return out, err
 	}

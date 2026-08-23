@@ -12,6 +12,7 @@ Load `pi/skillet.ts` as a Pi extension and ensure `skillet-adapter` is on
 /skillet search <natural-language query>
 /skillet activate <candidate-id>
 /skillet deactivate <skill-name>
+/skillet feedback <skill-name> <category> <summary>
 ```
 
 Activation is session-scoped. Pi reloads its resources immediately, so the
@@ -19,6 +20,10 @@ skill is available without restarting the interactive session. After a
 successful reload Pi reports `activated`; after a successful deactivation
 reload it reports `deactivated`. Telemetry is best-effort and does not control
 whether the skill is active.
+
+Feedback is explicit rather than inferred from the conversation. Pi resolves
+the named active skill to the exact materialization reference already held for
+the session and submits only the selected category plus a short summary.
 
 ## Claude Code, Codex, GitHub Copilot, and OpenCode
 
@@ -56,3 +61,28 @@ report `activated` merely because materialization succeeded: report it only
 after the host has actually loaded the skill. Likewise, report `completed` or
 `failed` only when the host can observe that outcome. Lifecycle telemetry is
 optional evidence; it never authorizes execution or changes retrieval ranking.
+
+All four wrappers also expose explicit structured feedback using the same
+materialization reference:
+
+```sh
+adapters/claude-code/skillet-claude feedback \
+  -reference "$LIFECYCLE_JSON" \
+  -category ambiguous_instruction \
+  -summary "The rollback step did not identify which generated file to remove."
+```
+
+Supported feedback categories are `step_failed`, `workaround_required`,
+`user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, and
+`improvement_suggested`. Summaries are capped at 1,000 characters. Do not send
+session transcripts, credentials, user identity, or instructions to execute.
+Feedback is untrusted evidence for maintainer review; recording it never edits
+a skill, opens an issue, changes ranking, or deprecates a revision.
+
+Maintainers can query feedback directly with the shared helper:
+
+```sh
+skillet-adapter feedback-list -server "$SKILLET_MCP_URL" -skill-id org/repo/skill -limit 25
+```
+
+Feedback listing must be scoped to a skill or immutable revision.
