@@ -63,6 +63,9 @@ func (s *Store) RecordLifecycle(ctx context.Context, organizationID string, obse
 		return fmt.Errorf("lifecycle provenance does not match materialization")
 	}
 	trustedQueryID, _ := materialization["query_id"].(string)
+	if observation.QueryID != trustedQueryID {
+		return fmt.Errorf("lifecycle query provenance does not match materialization")
+	}
 
 	return s.RecordAudit(ctx, organizationID, "skill_"+observation.Event, map[string]any{
 		"actor_type":         "harness",
