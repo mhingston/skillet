@@ -19,6 +19,9 @@ jobs:
 
           release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v1.0.0")"
 
+          echo "Published assets:"
+          jq -r '.assets[] | "\(.name) (\(.size) bytes)"' <<< "${release_json}"
+
           jq -e '
             .tag_name == "v1.0.0" and
             .draft == false and
