@@ -94,11 +94,14 @@ func (c Client) Search(ctx context.Context, query string, limit int) (SearchResu
 
 func (c Client) Materialize(ctx context.Context, candidateID string, values ...string) (MaterializeResult, string, error) {
 	version, versionRange, skillID, destination := "", "", "", ""
-	if len(values) == 1 {
+	switch len(values) {
+	case 1:
 		destination = values[0]
-	} else if len(values) == 3 {
+	case 3:
 		version, versionRange, destination = values[0], values[1], values[2]
-	} else {
+	case 4:
+		version, versionRange, skillID, destination = values[0], values[1], values[2], values[3]
+	default:
 		return MaterializeResult{}, "", fmt.Errorf("materialize arguments are invalid")
 	}
 	s, err := c.connect(ctx)
@@ -117,7 +120,6 @@ func (c Client) Materialize(ctx context.Context, candidateID string, values ...s
 		args["range"] = versionRange
 	}
 	if len(values) == 4 {
-		version, versionRange, skillID, destination = values[0], values[1], values[2], values[3]
 		delete(args, "version")
 		delete(args, "range")
 		if version != "" {
