@@ -36,6 +36,16 @@ type SearchResult struct {
 	} `json:"candidates"`
 }
 
+type LifecycleReference struct {
+	RevisionID        string `json:"revision_id"`
+	SkillID           string `json:"skill_id"`
+	Commit            string `json:"commit"`
+	Tree              string `json:"tree"`
+	ArchiveSHA256     string `json:"archive_sha256"`
+	QueryID           string `json:"query_id,omitempty"`
+	MaterializationID string `json:"materialization_id,omitempty"`
+}
+
 type MaterializeResult struct {
 	Skill struct {
 		ID      string `json:"id"`
@@ -47,6 +57,13 @@ type MaterializeResult struct {
 		ArchiveSHA256 string `json:"archive_sha256"`
 		Format        string `json:"format"`
 	} `json:"package"`
+	Lifecycle LifecycleReference `json:"lifecycle"`
+}
+
+type LifecycleResult struct {
+	Status     string `json:"status"`
+	Event      string `json:"event"`
+	RevisionID string `json:"revision_id"`
 }
 
 func (c Client) connect(ctx context.Context) (*mcp.ClientSession, error) {
@@ -127,6 +144,31 @@ func (c Client) Materialize(ctx context.Context, candidateID string, values ...s
 	}
 	path, err := downloadAndExtract(ctx, out.Package.DownloadURL, out.Package.ArchiveSHA256, out.Package.Format, destination, out.Skill.Name)
 	return out, path, err
+}
+
+func (c Client) ReportLifecycle(ctx context.Context, lifecycle LifecycleReference, event, source, correlationID string) (LifecycleResult, error) {
+	s, err := c.connect(ctx)
+	if err != nil {
+		return LifecycleResult{}, err
+	}
+	defer s.Close()
+	r, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "report_skill_lifecycle", Arguments: map[string]any{
+		"lifecycle":      lifecycle,
+		"event":          event,
+		"source":         source,
+		"correlation_id": correlationID,
+	}})
+	if err != nil {
+		return LifecycleResult{}, err
+	}
+	if r.IsError {
+		return LifecycleResult{}, fmt.Errorf("report_skill_lifecycle returned an error")
+	}
+	var out LifecycleResult
+	if err := decodeStructured(r.StructuredContent, &out); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 func decodeStructured(value any, dst any) error {
