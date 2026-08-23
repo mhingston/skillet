@@ -3,7 +3,8 @@ set -eu
 : "${SKILLET_MCP_URL:=http://localhost:8080/mcp}"
 : "${SKILLET_COPILOT_SKILLS_DIR:=${HOME}/.copilot/skills}"
 if [ "${1:-}" = "lifecycle" ]; then shift; exec skillet-adapter lifecycle -server "$SKILLET_MCP_URL" -source copilot "$@"; fi
-[ "$#" -ge 1 ] || { echo "usage: skillet-copilot <selector> | lifecycle <lifecycle options>" >&2; exit 2; }
+if [ "${1:-}" = "feedback" ]; then shift; exec skillet-adapter feedback -server "$SKILLET_MCP_URL" -source copilot "$@"; fi
+[ "$#" -ge 1 ] || { echo "usage: skillet-copilot <selector> | lifecycle <lifecycle options> | feedback <feedback options>" >&2; exit 2; }
 selector="$1"
 if [ "${selector#*@}" != "$selector" ]; then sel="${selector#*@}"; if [ "${sel#^}" != "$sel" ]; then exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -range "$sel" -destination "$SKILLET_COPILOT_SKILLS_DIR" -harness copilot; else exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -skill-id "${selector%%@*}" -version "$sel" -destination "$SKILLET_COPILOT_SKILLS_DIR" -harness copilot; fi; fi
 exec skillet-adapter materialize -server "$SKILLET_MCP_URL" -candidate "$selector" -destination "$SKILLET_COPILOT_SKILLS_DIR" -harness copilot
