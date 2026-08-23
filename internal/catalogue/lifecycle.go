@@ -62,10 +62,6 @@ func (s *Store) RecordLifecycle(ctx context.Context, organizationID string, obse
 	if materialization["archive_sha256"] != observation.ArchiveSHA256 {
 		return fmt.Errorf("lifecycle provenance does not match materialization")
 	}
-	trustedQueryID, _ := materialization["query_id"].(string)
-	if observation.QueryID != trustedQueryID {
-		return fmt.Errorf("lifecycle query provenance does not match materialization")
-	}
 
 	return s.RecordAudit(ctx, organizationID, "skill_"+observation.Event, map[string]any{
 		"actor_type":         "harness",
@@ -75,7 +71,6 @@ func (s *Store) RecordLifecycle(ctx context.Context, organizationID string, obse
 		"commit":             commit,
 		"tree":               tree,
 		"archive_sha256":     observation.ArchiveSHA256,
-		"query_id":           trustedQueryID,
 		"materialization_id": observation.MaterializationID,
 		"correlation_id":     observation.CorrelationID,
 		"lifecycle_source":   observation.Source,
