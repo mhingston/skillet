@@ -62,7 +62,7 @@ func (s *Store) ListFeedback(ctx context.Context, organizationID, skillID, revis
 	if category != "" && !validFeedbackCategory(category) {
 		return nil, fmt.Errorf("unsupported feedback category %q", category)
 	}
-	if limit < 1 || limit > 100 || offset < 0 {
+	if limit < 1 || limit > 101 || offset < 0 {
 		return nil, fmt.Errorf("feedback pagination is invalid")
 	}
 
