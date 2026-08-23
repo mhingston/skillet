@@ -22,7 +22,7 @@ func TestOpenCreatesIdempotentWALSchema(t *testing.T) {
 	if mode != "wal" {
 		t.Fatalf("journal mode = %s", mode)
 	}
-	for _, table := range []string{"organizations", "repositories", "skills", "skill_revisions", "audit_events", "embedding_cache"} {
+	for _, table := range []string{"organizations", "repositories", "skills", "skill_revisions", "audit_events", "embedding_cache", "skill_feedback"} {
 		var n string
 		if err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&n); err != nil {
 			t.Fatalf("missing %s: %v", table, err)
@@ -91,6 +91,29 @@ func TestOpenRejectsUnrecordedPartialMigration(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "migration 1 schema contains later-version objects") {
 		t.Fatalf("error = %q, want unrecorded partial migration error", err)
+	}
+}
+
+func TestOpenRejectsRecordedFeedbackMigrationWithoutTable(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "catalogue.db")
+	db, err := Open(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE skill_feedback`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Open(context.Background(), p)
+	if err == nil {
+		t.Fatal("Open accepted migration 8 without skill_feedback")
+	}
+	if !strings.Contains(err.Error(), "migration 8 schema incomplete") {
+		t.Fatalf("error = %q, want migration 8 schema incomplete", err)
 	}
 }
 
