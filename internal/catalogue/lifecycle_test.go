@@ -12,7 +12,7 @@ import (
 	"github.com/mhingston/skillet/internal/store"
 )
 
-func TestRecordLifecycleBindsObservationToImmutableRevision(t *testing.T) {
+func TestRecordLifecycleBindsObservationToImmutableMaterialization(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalogue.db"))
 	if err != nil {
@@ -28,7 +28,13 @@ func TestRecordLifecycleBindsObservationToImmutableRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observation := LifecycleObservation{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, Event: "activated", CorrelationID: "session-1", Source: "pi"}
+	if err := catalog.RecordAudit(ctx, "demo", "materialisation_prepared", map[string]any{
+		"skill_id": rev.SkillID, "revision_id": rev.ID, "archive_sha256": tarDigest,
+		"request_id": "materialize-1", "query_id": "query-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	observation := LifecycleObservation{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, QueryID: "query-1", MaterializationID: "materialize-1", Event: "activated", CorrelationID: "session-1", Source: "pi"}
 	if err := catalog.RecordLifecycle(ctx, "demo", observation); err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +45,12 @@ func TestRecordLifecycleBindsObservationToImmutableRevision(t *testing.T) {
 	if event != "skill_activated" || revisionID != rev.ID || actorID != "pi" {
 		t.Fatalf("event=%q revision=%q actor=%q", event, revisionID, actorID)
 	}
-	if !strings.Contains(details, `"correlation_id":"session-1"`) {
+	if !strings.Contains(details, `"correlation_id":"session-1"`) || !strings.Contains(details, `"query_id":"query-1"`) {
 		t.Fatalf("details = %s", details)
 	}
 }
 
-func TestRecordLifecycleRejectsForgedRevisionIdentity(t *testing.T) {
+func TestRecordLifecycleRejectsForgedProvenance(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalogue.db"))
 	if err != nil {
@@ -60,16 +66,35 @@ func TestRecordLifecycleRejectsForgedRevisionIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bad := LifecycleObservation{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: "forged", Event: "activated", Source: "pi"}
+	if err := catalog.RecordAudit(ctx, "demo", "materialisation_prepared", map[string]any{
+		"skill_id": rev.SkillID, "revision_id": rev.ID, "archive_sha256": tarDigest,
+		"request_id": "materialize-1", "query_id": "query-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	valid := LifecycleObservation{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, QueryID: "query-1", MaterializationID: "materialize-1", Event: "activated", Source: "pi"}
+
+	bad := valid
+	bad.ArchiveSHA256 = "forged"
 	if err := catalog.RecordLifecycle(ctx, "demo", bad); err == nil {
 		t.Fatal("forged lifecycle identity was accepted")
 	}
-	bad.ArchiveSHA256 = tarDigest
+	bad = valid
+	bad.QueryID = "forged-query"
+	if err := catalog.RecordLifecycle(ctx, "demo", bad); err == nil {
+		t.Fatal("forged query provenance was accepted")
+	}
+	bad = valid
+	bad.MaterializationID = "forged-materialization"
+	if err := catalog.RecordLifecycle(ctx, "demo", bad); err == nil {
+		t.Fatal("forged materialization provenance was accepted")
+	}
+	bad = valid
 	bad.Event = "used"
 	if err := catalog.RecordLifecycle(ctx, "demo", bad); err == nil {
 		t.Fatal("unsupported lifecycle event was accepted")
 	}
-	if err := catalog.RecordLifecycle(ctx, "other", LifecycleObservation{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, Event: "activated"}); err == nil {
+	if err := catalog.RecordLifecycle(ctx, "other", valid); err == nil {
 		t.Fatal("cross-organization lifecycle observation was accepted")
 	}
 }
