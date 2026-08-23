@@ -28,9 +28,15 @@ func TestLifecycleToolRecordsObservedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := catalog.RecordAudit(ctx, "demo", "materialisation_prepared", map[string]any{
+		"skill_id": rev.SkillID, "revision_id": rev.ID, "archive_sha256": tarDigest,
+		"request_id": "materialize-1", "query_id": "query-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	s := &Server{catalogue: catalog, organizationID: "demo", metrics: &Metrics{}}
 	_, out, err := s.lifecycleTool(ctx, nil, lifecycleInput{
-		Lifecycle:     lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest},
+		Lifecycle:     lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, QueryID: "query-1", MaterializationID: "materialize-1"},
 		Event:         "activated",
 		CorrelationID: "run-1",
 		Source:        "pi",
