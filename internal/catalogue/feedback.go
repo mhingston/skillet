@@ -101,7 +101,7 @@ func (s *Store) ListFeedback(ctx context.Context, organizationID, skillID, revis
 
 func validFeedbackCategory(category string) bool {
 	switch strings.TrimSpace(category) {
-	case "step_failed", "workaround_required", "user_correction", "ambiguous_instruction", "compatibility_mismatch", "improvement_suggested":
+	case "step_failed", "workaround_required", "user_correction", "ambiguous_instruction", "compatibility_mismatch", "improvement_suggested", "effective_pattern":
 		return true
 	default:
 		return false
