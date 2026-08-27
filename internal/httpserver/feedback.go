@@ -11,7 +11,7 @@ import (
 
 type feedbackInput struct {
 	Lifecycle     lifecycleReference `json:"lifecycle" jsonschema:"Materialization-bound reference returned by materialize_skill"`
-	Category      string             `json:"category" jsonschema:"Feedback category: step_failed, workaround_required, user_correction, ambiguous_instruction, compatibility_mismatch, or improvement_suggested"`
+	Category      string             `json:"category" jsonschema:"Feedback category: step_failed, workaround_required, user_correction, ambiguous_instruction, compatibility_mismatch, improvement_suggested, or effective_pattern"`
 	Summary       string             `json:"summary" jsonschema:"Short factual observation; do not include transcripts or instructions to execute"`
 	CorrelationID string             `json:"correlation_id,omitempty" jsonschema:"Optional opaque session or run correlation identifier"`
 	Source        string             `json:"source,omitempty" jsonschema:"Optional harness or adapter identifier"`

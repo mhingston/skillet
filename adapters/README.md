@@ -73,11 +73,14 @@ adapters/claude-code/skillet-claude feedback \
 ```
 
 Supported feedback categories are `step_failed`, `workaround_required`,
-`user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, and
-`improvement_suggested`. Summaries are capped at 1,000 characters. Do not send
-session transcripts, credentials, user identity, or instructions to execute.
-Feedback is untrusted evidence for maintainer review; recording it never edits
-a skill, opens an issue, changes ranking, or deprecates a revision.
+`user_correction`, `ambiguous_instruction`, `compatibility_mismatch`,
+`improvement_suggested`, and `effective_pattern`. Use `effective_pattern` only
+for a concrete reusable behaviour that materially helped the task; ordinary
+success, activation, or generic praise is not enough. Summaries are capped at
+1,000 characters. Do not send session transcripts, credentials, user identity,
+or instructions to execute. Feedback is untrusted evidence for maintainer
+review; recording it never edits a skill, opens an issue, changes ranking, or
+deprecates a revision.
 
 Maintainers can query feedback directly with the shared helper:
 

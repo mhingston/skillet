@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Skillet can now observe lifecycle events for an exact materialized skill revision, but lifecycle telemetry only answers whether and how a skill was used. Failures, workarounds, user corrections, ambiguous instructions, compatibility mismatches, and concrete improvement suggestions are different evidence: they explain what went wrong or what a maintainer may want to improve.
+Skillet can now observe lifecycle events for an exact materialized skill revision, but lifecycle telemetry only answers whether and how a skill was used. Failures, workarounds, user corrections, ambiguous instructions, compatibility mismatches, concrete improvement suggestions, and effective reusable patterns are different evidence: they explain what went wrong, what a maintainer may want to improve, or what useful behaviour should be preserved.
 
 Without a bounded feedback primitive, those observations remain trapped in sessions or are converted directly into source changes without durable provenance.
 
@@ -24,6 +24,9 @@ Accepted categories are deliberately small:
 - `ambiguous_instruction`
 - `compatibility_mismatch`
 - `improvement_suggested`
+- `effective_pattern`
+
+`effective_pattern` is a positive evidence category for a concrete reusable behaviour that materially helped the task. It is not a generic approval, satisfaction score, or success counter. Ordinary activation, completion, or absence of failure does not justify recording it.
 
 Each record contains a short summary capped at 1,000 characters plus optional opaque correlation and harness source. Arbitrary transcripts are not part of the contract.
 
@@ -47,10 +50,12 @@ Recording feedback does not:
 - authorize tool execution;
 - require agents to reflect after every use.
 
+Positive feedback does not prove global skill quality and must not be converted directly into a ranking, promotion, or preservation rule. A later consumer should deduplicate correlated observations and weigh effective patterns alongside failures, contradictions, eval results, and current source coverage.
+
 Any later workflow that converts feedback into an issue, evaluation case, or proposed source change must remain explicit and reviewable.
 
 ## Consequences
 
 Skillet gains a closed-loop evidence primitive without becoming a self-modifying skill runtime. Maintainers can inspect bounded observations against the exact revision that produced them, and future quality workflows can consume those records without scraping conversations.
 
-Lifecycle telemetry and structured feedback deliberately remain separate: lifecycle records whether/how a skill was used; feedback records what friction or improvement evidence was observed.
+Lifecycle telemetry and structured feedback deliberately remain separate: lifecycle records whether/how a skill was used; feedback records what friction, improvement, or useful reusable behaviour was observed.

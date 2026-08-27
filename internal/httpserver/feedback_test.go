@@ -37,19 +37,19 @@ func TestFeedbackToolRecordsAndListsBoundedObservation(t *testing.T) {
 	s := &Server{catalogue: catalog, organizationID: "demo", metrics: &Metrics{}}
 	_, out, err := s.feedbackTool(ctx, nil, feedbackInput{
 		Lifecycle: lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, MaterializationID: "materialize-1"},
-		Category: "user_correction", Summary: "The expected output format was ambiguous.", CorrelationID: "run-1", Source: "pi",
+		Category: "effective_pattern", Summary: "The explicit rollback verification prevented a stale generated file from being retained.", CorrelationID: "run-1", Source: "pi",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Status != "recorded" || out.FeedbackID == 0 || out.RevisionID != rev.ID {
+	if out.Status != "recorded" || out.FeedbackID == 0 || out.RevisionID != rev.ID || out.Category != "effective_pattern" {
 		t.Fatalf("out = %+v", out)
 	}
-	_, listed, err := s.listFeedbackTool(ctx, nil, listFeedbackInput{RevisionID: rev.ID, Limit: 25})
+	_, listed, err := s.listFeedbackTool(ctx, nil, listFeedbackInput{RevisionID: rev.ID, Category: "effective_pattern", Limit: 25})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Feedback) != 1 || listed.Feedback[0].Category != "user_correction" || listed.HasMore {
+	if len(listed.Feedback) != 1 || listed.Feedback[0].Category != "effective_pattern" || listed.HasMore {
 		t.Fatalf("listed = %+v", listed)
 	}
 }
