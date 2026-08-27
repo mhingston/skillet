@@ -59,6 +59,26 @@ func TestRecordAndListFeedbackBindsToMaterialization(t *testing.T) {
 	}
 }
 
+func TestValidFeedbackCategoryVocabulary(t *testing.T) {
+	valid := []string{
+		"step_failed",
+		"workaround_required",
+		"user_correction",
+		"ambiguous_instruction",
+		"compatibility_mismatch",
+		"improvement_suggested",
+		"effective_pattern",
+	}
+	for _, category := range valid {
+		if !validFeedbackCategory(category) {
+			t.Fatalf("valid category %q was rejected", category)
+		}
+	}
+	if validFeedbackCategory("helpful") {
+		t.Fatal("unsupported generic praise category was accepted")
+	}
+}
+
 func TestRecordFeedbackRejectsInvalidCategoryAndProvenance(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalogue.db"))
