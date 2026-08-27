@@ -194,7 +194,7 @@ adapters/codex/skillet-codex feedback \
   -summary "The rollback step did not identify which generated file to remove."
 ```
 
-Supported categories are `step_failed`, `workaround_required`, `user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, and `improvement_suggested`. Summaries are capped at 1,000 characters. Maintainers can query revision-bound observations with `skillet-adapter feedback-list`; listing must be scoped to a skill or immutable revision. See [`adapters/README.md`](adapters/README.md) for the complete adapter contract.
+Supported categories are `step_failed`, `workaround_required`, `user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, `improvement_suggested`, and `effective_pattern`. Use `effective_pattern` only for a concrete reusable behaviour that materially helped the task; ordinary success, activation, or generic praise is not enough. Summaries are capped at 1,000 characters. Maintainers can query revision-bound observations with `skillet-adapter feedback-list`; listing must be scoped to a skill or immutable revision. See [`adapters/README.md`](adapters/README.md) for the complete adapter contract.
 
 ## How it works
 
