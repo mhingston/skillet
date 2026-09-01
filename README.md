@@ -108,6 +108,20 @@ skill should normally be installed alongside the Skillet MCP configuration;
 it is intentionally the one skill that does not depend on Skillet discovery to
 be found in the first place.
 
+Because a host may otherwise select a more specific local skill before invoking
+this bootstrap skill, configure the host's user-level instructions to route
+specialised or repository-level requests through Skillet first. For example:
+
+```text
+For any non-routine, specialised, domain-specific, repository-level,
+architecture, QA, delivery, or workflow request, consult Skillet via the
+find-skills workflow before selecting another task-specific skill. Prefer a
+relevant approved Skillet skill. Use list_skills for catalogue browsing and
+search_skills for task-intent discovery. Do not query Skillet for routine tasks
+already directly supported. If Skillet is unavailable, state that and continue
+with the best available skill.
+```
+
 The MCP tool descriptions still enforce the important server boundary: search
 returns metadata only, and Skillet never silently selects skills, writes to
 host directories, or executes skill scripts. Hosts that do not support Agent
