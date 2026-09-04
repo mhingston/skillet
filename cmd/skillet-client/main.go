@@ -6,6 +6,4 @@ import (
 	"github.com/mhingston/skillet/internal/clientcli"
 )
 
-// skillet-adapter is retained as a compatibility entrypoint. New integrations
-// should invoke skillet-client directly.
 func main() { clientcli.Main(os.Args[1:]) }
