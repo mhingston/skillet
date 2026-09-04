@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -570,7 +571,9 @@ func TestPOSIXAcquisitionCommandExecutesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var downloads atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(packageData.TarGZ)))
 		_, _ = w.Write(packageData.TarGZ)
 	}))
@@ -593,8 +596,31 @@ func TestPOSIXAcquisitionCommandExecutesAndIsIdempotent(t *testing.T) {
 	if _, err := os.Stat(entrypoint); err != nil {
 		t.Fatalf("entrypoint missing: %v", err)
 	}
+	receiptBytes, err := os.ReadFile(filepath.Join(cache, ".skillet-receipt.json"))
+	if err != nil {
+		t.Fatalf("receipt missing: %v", err)
+	}
+	var receipt struct {
+		SchemaVersion int    `json:"schemaVersion"`
+		SkillID       string `json:"skillId"`
+		Commit        string `json:"commit"`
+		ArchiveSHA256 string `json:"archiveSha256"`
+		Entrypoint    string `json:"entrypoint"`
+	}
+	if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
+		t.Fatalf("receipt is not valid JSON: %v", err)
+	}
+	if receipt.SchemaVersion != 1 || receipt.SkillID != "demo/repo/plan" || receipt.Commit != "commit" || receipt.ArchiveSHA256 != digest || receipt.Entrypoint != "plan/SKILL.md" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	if got := downloads.Load(); got != 1 {
+		t.Fatalf("downloads after first run = %d, want 1", got)
+	}
 	if got := run(); got != entrypoint {
 		t.Fatalf("idempotent output = %q, want %q", got, entrypoint)
+	}
+	if got := downloads.Load(); got != 1 {
+		t.Fatalf("downloads after idempotent run = %d, want 1", got)
 	}
 	if strings.HasPrefix(entrypoint, filepath.Join(root, ".git")) {
 		t.Fatal("materialized package was placed in the repository")
