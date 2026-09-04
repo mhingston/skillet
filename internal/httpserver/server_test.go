@@ -552,6 +552,9 @@ func TestAcquisitionCommandsValidateReceiptAndEntrypoint(t *testing.T) {
 	if strings.Contains(posix, "rm -rf") {
 		t.Error("posix command must not use rm -rf; host safety wrappers commonly block it")
 	}
+	if strings.Contains(posix, "rm -f") {
+		t.Error("posix command must not use rm -f; host safety wrappers may block it")
+	}
 	powershell := powershellCommand("https://example.test/pkg", digest, `$env:LOCALAPPDATA\Skillet\Cache\`+digest, "plan", "org/repo/plan", "commit-1")
 	for _, want := range []string{"ConvertFrom-Json", "Get-FileHash", "Expand-Archive", "SKILL.md", "archiveSha256"} {
 		if !strings.Contains(powershell, want) {
