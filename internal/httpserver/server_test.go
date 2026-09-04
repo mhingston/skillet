@@ -616,6 +616,15 @@ func TestPOSIXAcquisitionCommandExecutesAndIsIdempotent(t *testing.T) {
 	if got := downloads.Load(); got != 1 {
 		t.Fatalf("downloads after first run = %d, want 1", got)
 	}
+	for _, pattern := range []string{cache + ".staging.*", cache + ".previous.*"} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("glob temporary artifacts: %v", err)
+		}
+		if len(matches) != 0 {
+			t.Fatalf("temporary artifacts after first run = %v", matches)
+		}
+	}
 	if got := run(); got != entrypoint {
 		t.Fatalf("idempotent output = %q, want %q", got, entrypoint)
 	}
