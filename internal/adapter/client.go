@@ -95,7 +95,7 @@ type FeedbackListResult struct {
 
 func (c Client) connect(ctx context.Context) (*mcp.ClientSession, error) {
 	hc := &http.Client{Transport: bearerTransport{base: http.DefaultTransport, token: c.Token}}
-	client := mcp.NewClient(&mcp.Implementation{Name: "skillet-adapter", Version: "1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "skillet-client", Version: "1"}, nil)
 	return client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: strings.TrimRight(c.Server, "/"), HTTPClient: hc, DisableStandaloneSSE: true, MaxRetries: -1}, nil)
 }
 

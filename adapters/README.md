@@ -1,12 +1,34 @@
-# Harness adapters
+# Optional host integrations
 
-These adapters keep host activation outside the Skillet registry while sharing
-one MCP client and one digest-verifying materializer.
+These integrations keep host activation outside the Skillet registry while
+sharing the harness-neutral `skillet-client` and its digest-verifying
+materializer. They are optional; any MCP-capable host can use the generic
+client directly.
+
+## Generic client
+
+Build the client with:
+
+```sh
+go install ./cmd/skillet-client
+```
+
+Use an explicit destination instead of a harness-specific wrapper:
+
+```sh
+skillet-client search -query "find a skill for deterministic tool batching"
+skillet-client materialize -candidate <candidate-id> -destination "$HOME/.codex/skills"
+```
+
+The client verifies the package digest, extracts the selected skill, and prints
+the installed entrypoint plus its immutable lifecycle reference. It does not
+activate or reload a host. `skillet-adapter` remains a compatibility alias.
 
 ## Pi
 
-Load `pi/skillet.ts` as a Pi extension and ensure `skillet-adapter` is on
-`PATH` (or set `SKILLET_ADAPTER_BIN`). The extension provides:
+Load `pi/skillet.ts` as a Pi extension and ensure `skillet-client` is on `PATH`
+(or set `SKILLET_CLIENT_BIN`; the old `SKILLET_ADAPTER_BIN` name remains
+accepted). The extension provides:
 
 ```text
 /skillet search <natural-language query>
@@ -27,7 +49,7 @@ the session and submits only the selected category plus a short summary.
 
 ## Claude Code, Codex, GitHub Copilot, and OpenCode
 
-Build the helper with `go install ./cmd/skillet-adapter`, then run:
+Build the generic client with `go install ./cmd/skillet-client`, then run:
 
 ```sh
 adapters/claude-code/skillet-claude <candidate-id>
@@ -41,11 +63,10 @@ The default destinations are `~/.claude/skills`, `~/.codex/skills`,
 them with `SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`,
 `SKILLET_COPILOT_SKILLS_DIR`, or `SKILLET_OPENCODE_SKILLS_DIR`.
 The helper verifies the archive digest before replacing the selected skill.
-These hosts discover skills at process/session boundaries, so the command
-reports `reload_required: true`; start a new host session before relying on the
-activated skill. GitHub Copilot CLI can instead refresh an existing interactive
-session with `/skills reload`. No host directory is modified until this command
-is run.
+These hosts discover skills at process/session boundaries; start a new host
+session before relying on the materialized skill. GitHub Copilot CLI can instead
+refresh an existing interactive session with `/skills reload`. No host
+directory is modified until this command is run.
 
 Materialization results include a `lifecycle` reference bound to the immutable
 revision and package digest. All wrappers expose the same optional reporting
@@ -85,7 +106,7 @@ deprecates a revision.
 Maintainers can query feedback directly with the shared helper:
 
 ```sh
-skillet-adapter feedback-list -server "$SKILLET_MCP_URL" -skill-id org/repo/skill -limit 25
+skillet-client feedback-list -server "$SKILLET_MCP_URL" -skill-id org/repo/skill -limit 25
 ```
 
 Feedback listing must be scoped to a skill or immutable revision.

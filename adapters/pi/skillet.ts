@@ -5,14 +5,14 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const cache = process.env.SKILLET_PI_CACHE ?? join(homedir(), ".pi", "agent", "skillet");
-const helper = process.env.SKILLET_ADAPTER_BIN ?? "skillet-adapter";
+const helper = process.env.SKILLET_CLIENT_BIN ?? process.env.SKILLET_ADAPTER_BIN ?? "skillet-client";
 const server = process.env.SKILLET_MCP_URL ?? "http://localhost:8080/mcp";
 const active = new Map<string, any>();
 const correlation = randomUUID();
 
 async function run(pi: ExtensionAPI, args: string[]): Promise<any> {
 	const result = await pi.exec(helper, args, { timeout: 120_000 });
-	if (result.code !== 0) throw new Error(result.stderr || `skillet-adapter exited ${result.code}`);
+	if (result.code !== 0) throw new Error(result.stderr || `skillet client exited ${result.code}`);
 	return JSON.parse(result.stdout);
 }
 
@@ -55,7 +55,7 @@ export default function (pi: ExtensionAPI) {
 				mkdirSync(cache, { recursive: true });
 				const selector = words[0];
 				const flag = selector.includes("@") ? ["-skill-id", selector.slice(0, selector.indexOf("@")), ...(selector.slice(selector.indexOf("@") + 1).startsWith("^") ? ["-range", selector.slice(selector.indexOf("@") + 1)] : ["-version", selector.slice(selector.indexOf("@") + 1)])] : ["-candidate", selector];
-				const out = await run(pi, ["materialize", "-server", server, ...flag, "-destination", cache, "-harness", "pi"]);
+				const out = await run(pi, ["materialize", "-server", server, ...flag, "-destination", cache]);
 				active.set(out.entrypoint, out.lifecycle);
 				await ctx.reload();
 				try {
