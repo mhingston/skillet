@@ -20,9 +20,9 @@ The shipped v1 experience is:
 
 Skills may optionally declare `metadata.version` using SemVer 2.0. Exact versions and ranges resolve once to one retained immutable revision; ranges choose the highest stable declared version. Prereleases require an explicit prerelease selector. Unversioned skills remain valid, Git tags are not version authority, and there are no automatic upgrades or dependency resolution. Lockfile commit, tree, and archive SHA-256 fields remain authoritative.
 
-Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository ships a harness-neutral `skillet-client` for discovery, digest-verified materialization, lifecycle reporting, and structured feedback. Thin optional host integrations add native activation or reload behavior where a harness supports it; Pi additionally reports activation/deactivation after its observable reload boundary.
+Skillet is a registry and distribution boundary, not an agent harness or skill execution sandbox. The repository ships a harness-neutral `skillet-client` for discovery, digest-verified materialization, lifecycle reporting, and structured feedback. Compatible clients and hosts may report lifecycle observations only when they can truthfully observe the corresponding state.
 
-The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, revision-bound lifecycle telemetry, structured skill feedback, audit events, Prometheus counters, and optional Pi, Claude Code, Codex, GitHub Copilot, and OpenCode adapters.
+The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector routing retrieval, configurable embeddings and listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, MCP search/materialisation, revision-bound lifecycle telemetry, structured skill feedback, audit events, and Prometheus counters.
 
 ## Local development
 
@@ -131,7 +131,7 @@ The example starts in explicit development mode with no external database or mod
 
 ## Product boundary
 
-The service is intentionally single-node and SQLite-backed in v1. Approved repositories are configured by operators; admitted packages retain exact commits and SHA-256 digests. The core service will not execute skill scripts, resolve skill dependencies, or write to client harness directories. The optional generic client and host integrations perform explicit, user-invoked materialization after verifying the returned archive digest.
+The service is intentionally single-node and SQLite-backed in v1. Approved repositories are configured by operators; admitted packages retain exact commits and SHA-256 digests. The core service will not execute skill scripts, resolve skill dependencies, or write to client harness directories. The generic client performs explicit, user-invoked materialization after verifying the returned archive digest.
 
 A compatible MCP host must already provide shell/download capability, outbound HTTPS, permission to write to a user cache outside the repository, and permission to read the extracted `SKILL.md`. Hosts without those capabilities may be search-only. Skillet is not marketed as universally compatible with every MCP client.
 
@@ -154,6 +154,9 @@ Build it with:
 go install ./cmd/skillet-client
 ```
 
+Tagged releases publish `skillet-client` binaries alongside the Skillet server
+for Linux, macOS, and Windows on amd64 and arm64.
+
 Search and materialize directly into any compatible skill directory:
 
 ```sh
@@ -162,73 +165,42 @@ skillet-client materialize -candidate <candidate-id> -destination "$HOME/.codex/
 ```
 
 The destination controls where the extracted `SKILL.md` is placed; it is the
-only host-specific input required for materialization. `skillet-adapter` remains
-available as a compatibility entrypoint for existing scripts.
+only host-specific input required for materialization. Set `SKILLET_MCP_URL` or
+`SKILLET_TOKEN` when the defaults are not suitable.
 
-## Optional harness integrations
+## Host integration boundary
 
 MCP provides discovery and immutable package transport. It does not itself
 activate a `SKILL.md` in every host, because skill loading is host-specific.
-The integrations in [`adapters/`](adapters/) are convenience shims for host
-activation, reload, default directories, and native commands. They share the
-same generic client and do not change Skillet's MCP or provenance contract.
-
-For Pi, load [`adapters/pi/skillet.ts`](adapters/pi/skillet.ts) as an extension
-and ensure `skillet-client` is on `PATH` (or set `SKILLET_CLIENT_BIN`; the old
-`SKILLET_ADAPTER_BIN` name remains accepted). It supports:
-
-```text
-/skillet search <natural-language query>
-/skillet activate <candidate-id or skill-id@version/range>
-/skillet deactivate <skill-name>
-/skillet feedback <skill-name> <category> <summary>
-```
-
-Activation is session-scoped and calls Pi's resource reload API without restarting the interactive session. Pi reports `activated` after a successful reload and `deactivated` after a successful deactivation reload. `/skillet feedback` resolves the named active skill to the exact materialisation reference already held for the session. Set `SKILLET_MCP_URL` and `SKILLET_CLIENT_BIN` when the defaults are not suitable.
-
-For Claude Code, Codex, GitHub Copilot, and OpenCode, pass a selected candidate
-ID to the corresponding wrapper:
+After a materialization, use the host's normal session or resource reload
+mechanism before relying on the new skill. Report lifecycle events only after
+the host has actually observed them:
 
 ```sh
-adapters/claude-code/skillet-claude <candidate-id>
-adapters/codex/skillet-codex <candidate-id>
-adapters/github-copilot/skillet-copilot <candidate-id>
-adapters/opencode/skillet-opencode <candidate-id>
-```
-
-They default to `~/.claude/skills`, `~/.codex/skills`, `~/.copilot/skills`, and
-`~/.config/opencode/skills` respectively. These hosts discover skills at
-process/session boundaries; begin a new session before relying on a newly
-materialized skill. GitHub Copilot CLI can instead refresh an existing
-interactive session with `/skills reload`. Use
-`SKILLET_CLAUDE_SKILLS_DIR`, `SKILLET_CODEX_SKILLS_DIR`,
-`SKILLET_COPILOT_SKILLS_DIR`, `SKILLET_OPENCODE_SKILLS_DIR`, and
-`SKILLET_TOKEN` for overrides.
-
-Adapters also accept `skill-id@1.2.3` or `skill-id@^1.2`; this is a one-time
-resolution and materialization, not an upgrade policy.
-
-Materialization output includes a `lifecycle` reference. The non-Pi wrappers expose explicit lifecycle reporting for integrations that can truthfully observe the host boundary:
-
-```sh
-adapters/claude-code/skillet-claude lifecycle \
+skillet-client lifecycle \
+  -server "$SKILLET_MCP_URL" \
   -reference "$LIFECYCLE_JSON" \
   -event activated \
+  -source my-host \
   -correlation "$SESSION_ID"
 ```
 
-Do not report `activated` just because materialization succeeded. Likewise, report `completed` or `failed` only when the host actually observes that outcome.
+Do not report `activated` just because materialization succeeded. Likewise,
+report `completed`, `deactivated`, or `failed` only when the client or host
+actually observes that outcome.
 
-All wrappers also expose explicit structured feedback:
+Clients may submit bounded structured feedback against the same immutable
+materialization reference:
 
 ```sh
-adapters/codex/skillet-codex feedback \
+skillet-client feedback \
+  -server "$SKILLET_MCP_URL" \
   -reference "$LIFECYCLE_JSON" \
   -category ambiguous_instruction \
   -summary "The rollback step did not identify which generated file to remove."
 ```
 
-Supported categories are `step_failed`, `workaround_required`, `user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, `improvement_suggested`, and `effective_pattern`. Use `effective_pattern` only for a concrete reusable behaviour that materially helped the task; ordinary success, activation, or generic praise is not enough. Summaries are capped at 1,000 characters. Maintainers can query revision-bound observations with `skillet-client feedback-list`; listing must be scoped to a skill or immutable revision. See [`adapters/README.md`](adapters/README.md) for the complete integration contract.
+Supported categories are `step_failed`, `workaround_required`, `user_correction`, `ambiguous_instruction`, `compatibility_mismatch`, `improvement_suggested`, and `effective_pattern`. Use `effective_pattern` only for a concrete reusable behaviour that materially helped the task; ordinary success, activation, or generic praise is not enough. Summaries are capped at 1,000 characters. Maintainers can query revision-bound observations with `skillet-client feedback-list`; listing must be scoped to a skill or immutable revision.
 
 ## How it works
 
@@ -283,7 +255,7 @@ The v1 service intentionally stops at a coherent single-node registry. The follo
 - **Distribution and provenance:** package signatures or attestations, object-storage-backed packages, formal manifests, publisher identity, cross-registry federation, and stronger restoration policies.
 - **Security integrations at the trust boundary:** optional integration with an organisation’s existing repository or marketplace scanners, policy engines, SARIF pipelines, and approval records. Skillet should consume trusted decisions rather than become a general-purpose malware scanner or execution sandbox.
 - **Lifecycle and compatibility:** changelogs, breaking-change guidance, compatibility records across models and hosts, replacement skills, retained-version policies, richer lifecycle integrations, and maintainer feedback workflows.
-- **Client integrations:** native host materialisation, automatic resource-link downloads, deeper harness lifecycle integration, and lockfile maintenance by capable MCP hosts. The initial Pi, Claude Code, Codex, GitHub Copilot, and OpenCode adapters are intentionally thin and explicit.
+- **Client integrations:** native host materialisation, automatic resource-link downloads, host lifecycle integration, and lockfile maintenance by capable MCP hosts.
 - **Operations and scale:** PostgreSQL or object storage adapters, distributed search, horizontal deployment, backup/restore tooling, richer dashboards, and additional MCP client compatibility testing.
 
 These items should be driven by pilot evidence. Skill execution, dependency resolution, automatic activation, public submissions, workflow orchestration, automatic source mutation, and a general-purpose security marketplace remain outside Skillet’s product boundary unless that boundary is deliberately revisited.

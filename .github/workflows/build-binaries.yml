@@ -44,7 +44,7 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Build skillet
+      - name: Build binaries
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -52,10 +52,13 @@ jobs:
           EXTENSION: ${{ matrix.extension }}
         run: |
           mkdir -p dist
-          binary="skillet-${GOOS}-${GOARCH}${EXTENSION}"
-          go build -trimpath -ldflags="-s -w" -o "dist/${binary}" ./cmd/skillet
+          for name in skillet skillet-client; do
+            binary="${name}-${GOOS}-${GOARCH}${EXTENSION}"
+            go build -trimpath -ldflags="-s -w" -o "dist/${binary}" "./cmd/${name}"
+          done
           cd dist
-          sha256sum "${binary}" > "${binary}.sha256"
+          sha256sum "skillet-${GOOS}-${GOARCH}${EXTENSION}" > "skillet-${GOOS}-${GOARCH}${EXTENSION}.sha256"
+          sha256sum "skillet-client-${GOOS}-${GOARCH}${EXTENSION}" > "skillet-client-${GOOS}-${GOARCH}${EXTENSION}.sha256"
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -64,4 +67,6 @@ jobs:
           path: |
             dist/skillet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.extension }}
             dist/skillet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.extension }}.sha256
+            dist/skillet-client-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.extension }}
+            dist/skillet-client-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.extension }}.sha256
           if-no-files-found: error
