@@ -28,10 +28,10 @@ execution, alter active host state, trigger another skill, or affect retrieval
 ranking. `completed` and `failed` must only be reported by integrations that can
 actually observe those outcomes.
 
-Pi reports activation/deactivation after its resource reload boundary. Claude
-Code, Codex, GitHub Copilot, and OpenCode expose the same reporting capability,
-but do not infer activation from materialization because their skill discovery
-happens at a later process/session or explicit reload boundary.
+The generic client exposes the same reporting capability for clients that can
+truthfully observe a host boundary. It does not infer activation from
+materialization: skill discovery may happen at a later process, session, or
+explicit reload boundary.
 
 ## Consequences
 

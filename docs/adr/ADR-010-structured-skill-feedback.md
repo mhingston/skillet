@@ -34,7 +34,10 @@ Structured feedback is stored in a dedicated append-only `skill_feedback` table 
 
 Feedback listing must be scoped to a skill or immutable revision. Results are organization-isolated and ordered newest first.
 
-All adapters may submit explicit feedback because reporting is a deliberate action rather than a lifecycle event inferred by the adapter. Pi offers a convenience command that resolves an active skill to its already-held materialization reference; the other adapters expose the same shared helper operation.
+The generic client may submit explicit feedback because reporting is a
+deliberate action rather than a lifecycle event inferred from materialization.
+Any host integration may invoke the same client operation when it holds the
+materialization-bound reference and has a concrete observation to report.
 
 ## Trust boundary
 
