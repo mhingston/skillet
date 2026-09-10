@@ -89,9 +89,12 @@ repositories:
 Skillet ships [`skills/find-skills/SKILL.md`](skills/find-skills/SKILL.md) as a
 small bootstrap skill for compatible hosts. Install that skill in the host's
 normal skill directory instead of copying Skillet discovery heuristics into a
-system prompt. The skill decides when discovery is useful, calls `list_skills`
-or `search_skills`, treats candidate metadata as untrusted data, and preserves
-Skillet's explicit selection and materialisation boundary.
+system prompt.
+
+The host instruction establishes **when Skillet discovery is required**. The
+`find-skills` skill defines **how that discovery is performed**: it calls
+`list_skills` or `search_skills`, treats candidate metadata as untrusted data,
+and preserves Skillet's explicit selection and materialisation boundary.
 
 For a source checkout, copy or symlink the bundled directory into the host's
 user-level skill directory. For example:
@@ -108,19 +111,39 @@ skill should normally be installed alongside the Skillet MCP configuration;
 it is intentionally the one skill that does not depend on Skillet discovery to
 be found in the first place.
 
-Because a host may otherwise select a more specific local skill before invoking
-this bootstrap skill, configure the host's user-level instructions to route
-specialised or repository-level requests through Skillet first. For example:
+Because hosts may otherwise begin solving a task directly or select a more
+specific local skill before consulting Skillet, configure the host's
+user-level instructions with an explicit routing gate. For example:
 
 ```text
-For any non-routine, specialised, domain-specific, repository-level,
-architecture, QA, delivery, or workflow request, consult Skillet via the
-find-skills workflow before selecting another task-specific skill. Prefer a
-relevant approved Skillet skill. Use list_skills for catalogue browsing and
-search_skills for task-intent discovery. Do not query Skillet for routine tasks
-already directly supported. If Skillet is unavailable, state that and continue
-with the best available skill.
+Skillet discovery is a mandatory routing gate for non-routine work.
+
+Before doing substantive work on any specialised, domain-specific,
+repository-level, architecture, QA, delivery, or workflow request, consult
+Skillet using the installed find-skills workflow.
+
+For a covered request, the first task-routing action MUST be Skillet discovery.
+Do not begin repository exploration, invoke repository-analysis tools, select
+another task-specific skill, or start solving the task directly before this
+discovery step.
+
+Use search_skills for task-intent discovery. Use list_skills only when catalogue
+browsing is needed. Prefer a relevant approved Skillet skill when one is
+returned.
+
+This routing gate applies even when the task appears directly solvable, another
+repository-analysis tool is available, the agent already knows how to perform
+the task, or no other task-specific skill has yet been selected.
+
+Do not query Skillet for routine tasks already directly supported and unlikely
+to benefit from specialised guidance.
+
+If Skillet or the find-skills workflow is unavailable, state that explicitly
+and continue using the best available approach.
 ```
+
+After Skillet routing, hosts should follow any applicable task-specific or
+tool-specific guidance.
 
 The MCP tool descriptions still enforce the important server boundary: search
 returns metadata only, and Skillet never silently selects skills, writes to
