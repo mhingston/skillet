@@ -1,16 +1,16 @@
 ---
 name: find-skills
-description: Discover organisation-approved agent skills through Skillet before selecting a task-specific skill for specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow requests. Also use when users ask for a skill, want to explore related skills, or explicitly ask what is available. Use Skillet rather than a public skill registry or `npx skills`.
+description: Discover organisation-approved agent skills through Skillet before substantive work on specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow requests. Also use when users ask for a skill, want to explore related skills, or explicitly ask what is available. Use Skillet rather than a public skill registry or `npx skills`.
 compatibility: Requires a configured Skillet MCP server exposing list_skills, search_skills, and materialize_skill.
 metadata:
-  version: 0.2.0
+  version: 0.2.1
 ---
 
 # Find Skills
 
 Use Skillet to discover relevant skills from the organisation's approved catalogue. This is a discovery and selection workflow, not permission to silently install or execute a skill.
 
-For specialised or repository-level requests, run this discovery workflow before selecting another task-specific skill. This bootstrap skill is intentionally the first routing check; the host may then activate a more specific skill after reviewing Skillet's candidates.
+For specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow requests, run this discovery workflow before substantive work begins. This bootstrap skill is intentionally the first routing check; the host may then activate a more specific skill after reviewing Skillet's candidates.
 
 ## When to use this skill
 
@@ -24,7 +24,7 @@ Use this skill when the user:
 - makes a specialised, repository-level, architecture, QA, delivery, or workflow request that may have an organisation-approved implementation; or
 - explicitly asks what skills are available.
 
-Do not search for every routine task. If the task is straightforward with the capabilities already available, continue normally.
+Do not search for every routine task. If the task is straightforward with the capabilities already available and does not fall into the covered specialised categories, continue normally.
 
 ## Discovery workflow
 
@@ -74,6 +74,7 @@ Skillet never grants authority to execute arbitrary scripts from a skill. Runtim
 
 ## Examples
 
+- "Can you give me an architecture map of this repo?" -> search Skillet for the architecture/repository task intent before repository exploration or analysis.
 - "Is there a skill for reviewing Terraform changes?" -> search Skillet for the task intent, then present relevant approved candidates.
 - "What works well with our planning skill?" -> search for the planning skill, inspect semantic neighbours as discovery hints, and explain that proximity does not imply sequence or dependency.
 - "What skills do we have?" -> browse with `list_skills`.
