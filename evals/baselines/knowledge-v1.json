@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "suite": "knowledge-retrieval-v1",
+  "fixture_version": 1,
+  "passed": true,
+  "metrics": {
+    "top1_accuracy": 1,
+    "recall_at3": 1,
+    "mrr": 1,
+    "negative_precision": 1
+  },
+  "thresholds": {
+    "top1_accuracy": 0.8,
+    "recall_at3": 1,
+    "mrr": 0.88,
+    "negative_precision": 1,
+    "max_regression": 0.05
+  },
+  "cases": [
+    {
+      "id": "exact-rollback",
+      "negative": false,
+      "expected_path": "incident-response.md",
+      "top_path": "incident-response.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "semantic-roadside",
+      "negative": false,
+      "expected_path": "roadside.md",
+      "top_path": "roadside.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "heading-eligibility",
+      "negative": false,
+      "expected_path": "roadside.md",
+      "top_path": "roadside.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "reliability-slo",
+      "negative": false,
+      "expected_path": "reliability.md",
+      "top_path": "reliability.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "retention-renewal",
+      "negative": false,
+      "expected_path": "retention.md",
+      "top_path": "retention.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "kpi-ambiguity",
+      "negative": false,
+      "expected_path": "metrics.md",
+      "top_path": "metrics.md",
+      "found_rank": 1,
+      "result_count": 3,
+      "passed": true
+    },
+    {
+      "id": "deleted-stale-document",
+      "negative": true,
+      "result_count": 0,
+      "passed": true
+    },
+    {
+      "id": "unrelated-negative",
+      "negative": true,
+      "result_count": 0,
+      "passed": true
+    }
+  ]
+}

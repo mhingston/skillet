@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/mhingston/skillet/internal/eval"
+	"github.com/mhingston/skillet/internal/knowledgeeval"
 )
 
 type stepResult struct {
@@ -31,17 +32,20 @@ type metricResult struct {
 }
 
 type verificationReport struct {
-	SchemaVersion int            `json:"schema_version"`
-	Suite         string         `json:"suite"`
-	Passed        bool           `json:"passed"`
-	Steps         []stepResult   `json:"steps"`
-	Metrics       []metricResult `json:"metrics,omitempty"`
-	EvalReport    string         `json:"eval_report"`
+	SchemaVersion       int            `json:"schema_version"`
+	Suite               string         `json:"suite"`
+	Passed              bool           `json:"passed"`
+	Steps               []stepResult   `json:"steps"`
+	Metrics             []metricResult `json:"metrics,omitempty"`
+	EvalReport          string         `json:"eval_report"`
+	KnowledgeEvalReport string         `json:"knowledge_eval_report,omitempty"`
 }
 
 func main() {
 	fixturePath := flag.String("fixtures", "evals/retrieval.yaml", "retrieval fixture YAML path")
 	baselinePath := flag.String("baseline", "evals/baselines/retrieval-v1.json", "protected retrieval baseline JSON path")
+	knowledgeFixturePath := flag.String("knowledge-fixtures", "evals/knowledge.yaml", "knowledge retrieval fixture YAML path")
+	knowledgeBaselinePath := flag.String("knowledge-baseline", "evals/baselines/knowledge-v1.json", "protected knowledge retrieval baseline JSON path")
 	reportDir := flag.String("report-dir", "artifacts/verification", "directory for machine-readable verification reports")
 	flag.Parse()
 
@@ -49,6 +53,7 @@ func main() {
 		fatal(fmt.Errorf("create report directory: %w", err))
 	}
 	rawEvalPath := filepath.Join(*reportDir, "retrieval.json")
+	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
 
 	commands := []struct {
@@ -59,10 +64,15 @@ func main() {
 		{name: "go-vet", args: []string{"go", "vet", "./..."}},
 		{name: "go-test-race", args: []string{"go", "test", "-race", "./..."}},
 		{name: "offline-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineLocalAdmissionSearchAndMaterialize$", "-count=1"}},
+		{name: "offline-knowledge-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineKnowledgeIndexSearchReadAndReindex$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
+		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--baseline", *knowledgeBaselinePath, "--report", knowledgeEvalPath}},
 	}
 
-	report := verificationReport{SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true, EvalReport: filepath.ToSlash(rawEvalPath)}
+	report := verificationReport{
+		SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true,
+		EvalReport: filepath.ToSlash(rawEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
+	}
 	for _, command := range commands {
 		passed := run(command.args)
 		report.Steps = append(report.Steps, stepResult{Name: command.name, Command: joinCommand(command.args), Passed: passed})
@@ -71,17 +81,20 @@ func main() {
 		}
 	}
 
-	metrics, err := loadMetricResults(*fixturePath, *baselinePath, rawEvalPath)
+	routingMetrics, err := loadMetricResults(*fixturePath, *baselinePath, rawEvalPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "skillet-verify: metric report:", err)
+		fmt.Fprintln(os.Stderr, "skillet-verify: routing metric report:", err)
 		report.Passed = false
 	} else {
-		report.Metrics = metrics
-		for _, metric := range metrics {
-			if !metric.Passed {
-				report.Passed = false
-			}
-		}
+		appendMetrics(&report, routingMetrics)
+	}
+
+	knowledgeMetrics, err := loadKnowledgeMetricResults(*knowledgeFixturePath, *knowledgeBaselinePath, knowledgeEvalPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "skillet-verify: knowledge metric report:", err)
+		report.Passed = false
+	} else {
+		appendMetrics(&report, knowledgeMetrics)
 	}
 
 	contents, err := json.MarshalIndent(report, "", "  ")
@@ -95,6 +108,15 @@ func main() {
 	fmt.Printf("verification report: %s\n", verificationPath)
 	if !report.Passed {
 		os.Exit(1)
+	}
+}
+
+func appendMetrics(report *verificationReport, metrics []metricResult) {
+	report.Metrics = append(report.Metrics, metrics...)
+	for _, metric := range metrics {
+		if !metric.Passed {
+			report.Passed = false
+		}
 	}
 }
 
@@ -122,14 +144,36 @@ func loadMetricResults(fixturePath, baselinePath, reportPath string) ([]metricRe
 	}
 	maxRegression := suite.Thresholds.MaxRegression
 	return []metricResult{
-		metric("single_top1_accuracy", suite, observed.Metrics.SingleTop1Accuracy, suite.Thresholds.SingleTop1Accuracy, ">=", baseline.Metrics.SingleTop1Accuracy, maxRegression),
-		metric("single_recall_at3", suite, observed.Metrics.SingleRecallAt3, suite.Thresholds.SingleRecallAt3, ">=", baseline.Metrics.SingleRecallAt3, maxRegression),
-		metric("multi_recall_at5", suite, observed.Metrics.MultiRecallAt5, suite.Thresholds.MultiRecallAt5, ">=", baseline.Metrics.MultiRecallAt5, maxRegression),
-		metric("negative_false_activation_rate", suite, observed.Metrics.NegativeFalseActivationRate, suite.Thresholds.NegativeFalseActivationRate, "<=", baseline.Metrics.NegativeFalseActivationRate, maxRegression),
+		metric("single_top1_accuracy", suite.Name, suite.Version, observed.Metrics.SingleTop1Accuracy, suite.Thresholds.SingleTop1Accuracy, ">=", baseline.Metrics.SingleTop1Accuracy, maxRegression),
+		metric("single_recall_at3", suite.Name, suite.Version, observed.Metrics.SingleRecallAt3, suite.Thresholds.SingleRecallAt3, ">=", baseline.Metrics.SingleRecallAt3, maxRegression),
+		metric("multi_recall_at5", suite.Name, suite.Version, observed.Metrics.MultiRecallAt5, suite.Thresholds.MultiRecallAt5, ">=", baseline.Metrics.MultiRecallAt5, maxRegression),
+		metric("negative_false_activation_rate", suite.Name, suite.Version, observed.Metrics.NegativeFalseActivationRate, suite.Thresholds.NegativeFalseActivationRate, "<=", baseline.Metrics.NegativeFalseActivationRate, maxRegression),
 	}, nil
 }
 
-func metric(name string, suite eval.Suite, observed, threshold float64, comparison string, baseline, maxRegression float64) metricResult {
+func loadKnowledgeMetricResults(fixturePath, baselinePath, reportPath string) ([]metricResult, error) {
+	suite, err := knowledgeeval.Load(fixturePath)
+	if err != nil {
+		return nil, err
+	}
+	observed, err := loadKnowledgeEvalReport(reportPath)
+	if err != nil {
+		return nil, err
+	}
+	baseline, err := loadKnowledgeEvalReport(baselinePath)
+	if err != nil {
+		return nil, err
+	}
+	maxRegression := suite.Thresholds.MaxRegression
+	return []metricResult{
+		metric("knowledge_top1_accuracy", suite.Name, suite.Version, observed.Metrics.Top1Accuracy, suite.Thresholds.Top1Accuracy, ">=", baseline.Metrics.Top1Accuracy, maxRegression),
+		metric("knowledge_recall_at3", suite.Name, suite.Version, observed.Metrics.RecallAt3, suite.Thresholds.RecallAt3, ">=", baseline.Metrics.RecallAt3, maxRegression),
+		metric("knowledge_mrr", suite.Name, suite.Version, observed.Metrics.MRR, suite.Thresholds.MRR, ">=", baseline.Metrics.MRR, maxRegression),
+		metric("knowledge_negative_precision", suite.Name, suite.Version, observed.Metrics.NegativePrecision, suite.Thresholds.NegativePrecision, ">=", baseline.Metrics.NegativePrecision, maxRegression),
+	}, nil
+}
+
+func metric(name, fixture string, fixtureVersion int, observed, threshold float64, comparison string, baseline, maxRegression float64) metricResult {
 	passed := observed >= threshold && observed >= baseline-maxRegression
 	if comparison == "<=" {
 		passed = observed <= threshold && observed <= baseline+maxRegression
@@ -138,8 +182,8 @@ func metric(name string, suite eval.Suite, observed, threshold float64, comparis
 	regressionCopy := maxRegression
 	return metricResult{
 		Name:              name,
-		Fixture:           suite.Name,
-		FixtureVersion:    suite.Version,
+		Fixture:           fixture,
+		FixtureVersion:    fixtureVersion,
 		ObservedValue:     observed,
 		RequiredThreshold: threshold,
 		Comparison:        comparison,
@@ -157,6 +201,18 @@ func loadEvalReport(path string) (eval.Report, error) {
 	var report eval.Report
 	if err := json.Unmarshal(contents, &report); err != nil {
 		return eval.Report{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return report, nil
+}
+
+func loadKnowledgeEvalReport(path string) (knowledgeeval.Report, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return knowledgeeval.Report{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	var report knowledgeeval.Report
+	if err := json.Unmarshal(contents, &report); err != nil {
+		return knowledgeeval.Report{}, fmt.Errorf("decode %s: %w", path, err)
 	}
 	return report, nil
 }
