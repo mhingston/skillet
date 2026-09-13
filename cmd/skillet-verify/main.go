@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 
 	"github.com/mhingston/skillet/internal/capabilityeval"
 	"github.com/mhingston/skillet/internal/eval"
@@ -18,6 +19,11 @@ type stepResult struct {
 	Name    string `json:"name"`
 	Command string `json:"command"`
 	Passed  bool   `json:"passed"`
+}
+
+type journeyResult struct {
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
 }
 
 type metricResult struct {
@@ -33,14 +39,17 @@ type metricResult struct {
 }
 
 type verificationReport struct {
-	SchemaVersion        int            `json:"schema_version"`
-	Suite                string         `json:"suite"`
-	Passed               bool           `json:"passed"`
-	Steps                []stepResult   `json:"steps"`
-	Metrics              []metricResult `json:"metrics,omitempty"`
-	EvalReport           string         `json:"eval_report"`
-	CapabilityEvalReport string         `json:"capability_eval_report,omitempty"`
-	KnowledgeEvalReport  string         `json:"knowledge_eval_report,omitempty"`
+	SchemaVersion           int                       `json:"schema_version"`
+	Suite                   string                    `json:"suite"`
+	Passed                  bool                      `json:"passed"`
+	Steps                   []stepResult              `json:"steps"`
+	Journeys                []journeyResult           `json:"e2e_journeys,omitempty"`
+	Metrics                 []metricResult            `json:"metrics,omitempty"`
+	CapabilityKindRecall    map[string]float64        `json:"capability_recall_by_kind,omitempty"`
+	CapabilityKindConfusion map[string]map[string]int `json:"capability_kind_confusion,omitempty"`
+	EvalReport              string                    `json:"eval_report"`
+	CapabilityEvalReport    string                    `json:"capability_eval_report,omitempty"`
+	KnowledgeEvalReport     string                    `json:"knowledge_eval_report,omitempty"`
 }
 
 func main() {
@@ -67,6 +76,7 @@ func main() {
 		{name: "go-test", args: []string{"go", "test", "./..."}},
 		{name: "go-vet", args: []string{"go", "vet", "./..."}},
 		{name: "go-test-race", args: []string{"go", "test", "-race", "./..."}},
+		{name: "offline-m1-integrated-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineM1IntegratedAcceptance$", "-count=1"}},
 		{name: "offline-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineLocalAdmissionSearchAndMaterialize$", "-count=1"}},
 		{name: "offline-scoped-capability-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineScopedCapabilityDiscoveryAndMaterialization$", "-count=1"}},
 		{name: "offline-knowledge-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineKnowledgeIndexSearchReadAndReindex$", "-count=1"}},
@@ -76,15 +86,28 @@ func main() {
 	}
 
 	report := verificationReport{
-		SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true,
+		SchemaVersion: 2, Suite: "vnext-m1-deterministic", Passed: true,
 		EvalReport: filepath.ToSlash(rawEvalPath), CapabilityEvalReport: filepath.ToSlash(capabilityEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
 	}
+	m1Passed := false
 	for _, command := range commands {
 		passed := run(command.args)
 		report.Steps = append(report.Steps, stepResult{Name: command.name, Command: joinCommand(command.args), Passed: passed})
+		if command.name == "offline-m1-integrated-e2e" {
+			m1Passed = passed
+		}
 		if !passed {
 			report.Passed = false
 		}
+	}
+	for _, name := range []string{
+		"A-capability-discovery-and-materialisation",
+		"B-organisational-knowledge",
+		"C-governance-and-reproducibility",
+		"D-learning-loop",
+		"E-degraded-and-failure-modes",
+	} {
+		report.Journeys = append(report.Journeys, journeyResult{Name: name, Passed: m1Passed})
 	}
 
 	routingMetrics, err := loadMetricResults(*fixturePath, *baselinePath, rawEvalPath)
@@ -101,6 +124,14 @@ func main() {
 		report.Passed = false
 	} else {
 		appendMetrics(&report, capabilityMetrics)
+		capabilityReport, loadErr := loadCapabilityEvalReport(capabilityEvalPath)
+		if loadErr != nil {
+			fmt.Fprintln(os.Stderr, "skillet-verify: capability kind report:", loadErr)
+			report.Passed = false
+		} else {
+			report.CapabilityKindRecall = capabilityReport.Metrics.RecallByKind
+			report.CapabilityKindConfusion = capabilityReport.Metrics.KindConfusion
+		}
 	}
 
 	knowledgeMetrics, err := loadKnowledgeMetricResults(*knowledgeFixturePath, *knowledgeBaselinePath, knowledgeEvalPath)
@@ -174,13 +205,22 @@ func loadCapabilityMetricResults(fixturePath, reportPath string) ([]metricResult
 	if err != nil {
 		return nil, err
 	}
-	return []metricResult{
+	metrics := []metricResult{
 		thresholdMetric("capability_top1", suite.Name, suite.Version, observed.Metrics.Top1, suite.Thresholds.Top1, ">="),
 		thresholdMetric("capability_recall_at3", suite.Name, suite.Version, observed.Metrics.RecallAt3, suite.Thresholds.RecallAt3, ">="),
 		thresholdMetric("capability_multi_recall_at5", suite.Name, suite.Version, observed.Metrics.MultiRecallAt5, suite.Thresholds.MultiRecallAt5, ">="),
 		thresholdMetric("capability_negative_false_activation_rate", suite.Name, suite.Version, observed.Metrics.NegativeFalseActivationRate, suite.Thresholds.NegativeFalseActivationRate, "<="),
 		thresholdMetric("capability_scope_leakage", suite.Name, suite.Version, observed.Metrics.ScopeLeakage, suite.Thresholds.ScopeLeakage, "<="),
-	}, nil
+	}
+	kinds := make([]string, 0, len(suite.Thresholds.RecallByKind))
+	for kind := range suite.Thresholds.RecallByKind {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	for _, kind := range kinds {
+		metrics = append(metrics, thresholdMetric("capability_recall_by_kind_"+kind, suite.Name, suite.Version, observed.Metrics.RecallByKind[kind], suite.Thresholds.RecallByKind[kind], ">="))
+	}
+	return metrics, nil
 }
 
 func loadKnowledgeMetricResults(fixturePath, baselinePath, reportPath string) ([]metricResult, error) {
