@@ -10,7 +10,8 @@ import (
 )
 
 type scopedEvalSuite struct {
-	Version   int `yaml:"version"`
+	Version int    `yaml:"version"`
+	Name    string `yaml:"name"`
 	Documents []struct {
 		RevisionID       string `yaml:"revision_id"`
 		SkillID          string `yaml:"skill_id"`
@@ -53,7 +54,7 @@ func TestScopedCapabilityRoutingEval(t *testing.T) {
 	if err := decoder.Decode(&suite); err != nil {
 		t.Fatal(err)
 	}
-	if suite.Version != 1 || len(suite.Documents) == 0 || len(suite.Cases) == 0 {
+	if suite.Version != 1 || suite.Name == "" || len(suite.Documents) == 0 || len(suite.Cases) == 0 {
 		t.Fatalf("invalid capability eval fixture: %+v", suite)
 	}
 
