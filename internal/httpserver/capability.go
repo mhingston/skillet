@@ -69,12 +69,16 @@ func addCapabilityTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil {
 		return
 	}
-	value, ok := capabilityServices.Load(app)
-	if !ok {
-		return
+	var service *capability.Service
+	if value, ok := capabilityServices.Load(app); ok {
+		service, _ = value.(*capability.Service)
+	} else if app.search != nil {
+		// Existing sources are central by default, so vNext capability discovery
+		// is available without requiring a migration. A configured capability
+		// service replaces this projection when repository-local policies exist.
+		service, _ = capability.New(app.search, nil)
 	}
-	service, ok := value.(*capability.Service)
-	if !ok || service == nil {
+	if service == nil {
 		return
 	}
 	mcp.AddTool(server, &mcp.Tool{
@@ -141,8 +145,8 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	}
 	queryID := fmt.Sprintf("cap_%x", sha256.Sum256([]byte(input.Query+"\x00"+input.Context+"\x00"+scope.Namespace+"\x00"+scope.Repository+"\x00"+time.Now().UTC().Format(time.RFC3339Nano))))
 	out := searchCapabilitiesOutput{
-		QueryID: queryID,
-		Degraded: map[string]bool{"embedding": degraded},
+		QueryID:    queryID,
+		Degraded:   map[string]bool{"embedding": degraded},
 		Candidates: make([]capabilityCandidate, 0, len(results)),
 	}
 	for _, result := range results {
