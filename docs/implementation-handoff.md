@@ -22,6 +22,16 @@ go run ./cmd/skillet-verify
 
 The gate runs unit/integration/race checks, the integrated M1 Journey A-E acceptance test, focused compatibility E2Es, and the protected skill/capability/knowledge retrieval evaluations. It emits machine-readable evidence under `artifacts/verification/`, including Journey A-E status, v1 regression comparison, scoped capability metrics, per-kind recall/kind confusion, scope leakage, knowledge metrics, and `go test`/`go vet` status. See [testing-vnext.md](testing-vnext.md) and [m1-release-gate.md](m1-release-gate.md).
 
+## vNext M2 enterprise controls
+
+The M2 direction is tracked by [roadmap issue #51](https://github.com/mhingston/skillet/issues/51) and [ADR-014](adr/ADR-014-enterprise-identity-authorization-boundary.md).
+
+M2 is additive and opt-in. Existing OIDC/JWKS validation remains the authentication boundary; a trusted identity then flows into a separate transport-neutral authorization policy. Provider-specific behaviour should be expressed through configured verified-claim mapping rather than Entra-specific application code. Enterprise authorization must preserve the existing organisation / namespace / repository scope model and remain independent of semantic retrieval ranking.
+
+The implementation is deliberately decomposed into #52-#58: architecture/threat model, policy boundary, claim normalization, scoped enforcement, Entra-compatible user/workload proof, optional audit export, and the integrated enterprise acceptance gate. Development/static/local deployments must not acquire provider-specific dependencies merely because M2 exists.
+
+SCIM, Microsoft Graph, provider-specific SIEM integrations and persistent user/group-directory semantics remain deferred unless a separately reviewed evidence-backed requirement demonstrates that trusted token claims and the generic audit-sink boundary are insufficient.
+
 ## Deferred scope after M1
 
 Future work should remain evidence-driven and separately reviewed. Not proven by the M1 gate are dynamic tool execution/brokering, automatic capability composition, public marketplace/submission workflows, generated answers, inferred semantic graph authority, source-specific enterprise harvesters, automatic source mutation, distributed storage/search, or per-user enterprise identity policy.
