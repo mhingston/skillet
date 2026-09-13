@@ -61,12 +61,13 @@ func TestCompatibilityPolicyFailsClosed(t *testing.T) {
 	}
 }
 
-func TestCompatibilityPolicyDoesNotRequireProviderClaims(t *testing.T) {
+func TestCompatibilityPolicyDoesNotDependOnPermissionsOrAttributes(t *testing.T) {
 	policy := CompatibilityPolicy{}
 	identity := authn.Identity{
 		Subject:        "workload-1",
 		OrganizationID: "acme",
-		Claims:         map[string]any{"provider_specific": []any{"ignored"}},
+		Permissions:    map[string]struct{}{"provider-neutral.permission": {}},
+		Attributes:     map[string][]string{"groups": {"engineering"}},
 	}
 	decision := policy.Authorize(context.Background(), identity, ActionKnowledgeRead, Resource{OrganizationID: "acme", ID: "doc-1"})
 	if !decision.Allowed {
