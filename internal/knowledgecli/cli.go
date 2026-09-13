@@ -1,6 +1,5 @@
-// Package knowledgecli implements the local knowledge indexing/search/read
-// boundary used by the vNext Markdown vertical slice. MCP exposure is deferred
-// to the dedicated knowledge API issue.
+// Package knowledgecli implements local knowledge ingestion/search/read
+// operations against the same persisted catalogue served by Skillet MCP.
 package knowledgecli
 
 import (
@@ -17,11 +16,13 @@ import (
 // Run executes one knowledge command and writes a single JSON result to stdout.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: skillet-knowledge index|search|read ...")
+		return errors.New("usage: skillet-knowledge index|index-okf|search|read ...")
 	}
 	switch args[0] {
 	case "index":
 		return runIndex(ctx, args[1:], stdout, stderr)
+	case "index-okf":
+		return runOKFIndex(ctx, args[1:], stdout, stderr)
 	case "search":
 		return runSearch(ctx, args[1:], stdout, stderr)
 	case "read":
@@ -51,6 +52,32 @@ func runIndex(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	}
 	defer service.Close()
 	stats, err := service.Reindex(ctx, []knowledge.Source{{ID: *sourceID, Root: *sourceRoot, Locator: *locator, Revision: *revision}})
+	if err != nil {
+		return err
+	}
+	return writeJSON(stdout, stats)
+}
+
+func runOKFIndex(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("index-okf", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", "", "knowledge data directory")
+	bundleRoot := flags.String("bundle-root", "", "local OKF bundle directory")
+	bundleID := flags.String("bundle-id", "", "stable OKF bundle identity")
+	locator := flags.String("locator", "", "source locator recorded in provenance")
+	revision := flags.String("revision", "", "source content revision, such as a Git commit")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *dataDir == "" || *bundleRoot == "" || *bundleID == "" {
+		return errors.New("index-okf requires -data-dir, -bundle-root, and -bundle-id")
+	}
+	service, err := knowledge.Open(ctx, *dataDir, knowledge.Options{})
+	if err != nil {
+		return err
+	}
+	defer service.Close()
+	stats, err := service.ReindexOKF(ctx, []knowledge.OKFBundle{{ID: *bundleID, Root: *bundleRoot, Locator: *locator, Revision: *revision}})
 	if err != nil {
 		return err
 	}
