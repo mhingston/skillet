@@ -80,28 +80,27 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 	}
 	filters.OrganizationID = request.Organization
 	all := s.index.List(filters)
-	if len(all) == 0 {
-		return []Candidate{}, s.indexDegraded(query), nil
-	}
 	visible := make(map[string]Descriptor, len(all))
 	for _, doc := range all {
 		if s.visible(doc, request) {
 			visible[doc.ID] = descriptorFromDocument(doc, s.ScopeForDocument(doc))
 		}
 	}
-	if len(visible) == 0 {
-		return []Candidate{}, s.indexDegraded(query), nil
-	}
 	// Scope is applied after the ordinary relevance rank. Search deeply enough
 	// to ensure hidden local sources cannot crowd an eligible candidate out of
-	// the deterministic result set.
+	// the deterministic result set. The search still runs when nothing is
+	// visible so degradation reporting retains the same semantics as v1.
 	if lexicalDepth < len(all) {
 		lexicalDepth = len(all)
 	}
 	if vectorDepth < len(all) {
 		vectorDepth = len(all)
 	}
-	hits, degraded, err := s.index.SearchWithFilters(query, lexicalDepth, vectorDepth, len(all), rrfK, filters)
+	searchLimit := len(all)
+	if searchLimit < 1 {
+		searchLimit = 1
+	}
+	hits, degraded, err := s.index.SearchWithFilters(query, lexicalDepth, vectorDepth, searchLimit, rrfK, filters)
 	if err != nil {
 		return nil, degraded, err
 	}
@@ -180,8 +179,3 @@ func (s *Service) Policies() []SourcePolicy {
 	}
 	return out
 }
-
-// indexDegraded is intentionally conservative for no-result paths. A service
-// with no configured embedder is degraded in the same sense as search.Index.
-// Calling a real search solely to learn this bit would distort metrics.
-func (s *Service) indexDegraded(string) bool { return true }
