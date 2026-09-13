@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -48,6 +49,46 @@ func TestDiscoverOKFPreservesMetadataAndExplicitLinks(t *testing.T) {
 	}
 	if resolved != 2 || unresolved != 1 {
 		t.Fatalf("links = %+v", overview.Links)
+	}
+}
+
+func TestKnowledgeProjectionToleratesPlainMarkdown(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writeOKFTestFile(t, root, "plain.md", "# Plain knowledge\n\nplain-compatibility-token\n")
+	service, err := Open(ctx, t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if _, err := service.Reindex(ctx, []Source{{ID: "plain", Root: root, Locator: "file://plain", Revision: "r1"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	search, err := service.SearchOKF(ctx, "plain-compatibility-token", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Results) != 1 {
+		t.Fatalf("results = %+v, want one plain Markdown result", search.Results)
+	}
+	result := search.Results[0]
+	if result.Metadata.Type != "" || result.Result.SourceRevision != "r1" {
+		t.Fatalf("plain Markdown projection = %+v", result)
+	}
+	read, err := service.ReadOKF(ctx, result.Result.ChunkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Metadata.Type != "" || len(read.Links) != 0 || !strings.Contains(read.Chunk.Content, "plain-compatibility-token") {
+		t.Fatalf("plain Markdown read = %+v", read)
+	}
+	backlinks, err := service.GetBacklinks(ctx, result.Result.DocumentID, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backlinks) != 0 {
+		t.Fatalf("plain Markdown backlinks = %+v, want none", backlinks)
 	}
 }
 
