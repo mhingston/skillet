@@ -26,7 +26,7 @@ func (s *Server) ConfigureCapabilities(service *capability.Service) {
 	capabilityServices.Store(s, service)
 }
 
-func capabilityServiceFor(app *Server) *capability.Service {
+func configuredCapabilityServiceFor(app *Server) *capability.Service {
 	if app == nil {
 		return nil
 	}
@@ -34,7 +34,14 @@ func capabilityServiceFor(app *Server) *capability.Service {
 		service, _ := value.(*capability.Service)
 		return service
 	}
-	if app.search != nil {
+	return nil
+}
+
+func capabilityServiceFor(app *Server) *capability.Service {
+	if service := configuredCapabilityServiceFor(app); service != nil {
+		return service
+	}
+	if app != nil && app.search != nil {
 		// Existing sources are central by default, so vNext capability discovery
 		// is available without requiring a migration. A configured capability
 		// service replaces this projection when scoped or non-skill sources exist.
@@ -45,7 +52,11 @@ func capabilityServiceFor(app *Server) *capability.Service {
 }
 
 func (s *Server) validateCapabilityNewSelection(revisionID string) error {
-	service := capabilityServiceFor(s)
+	// Only a configured service carries authoritative governance state. The
+	// fallback projection exists solely so legacy central indexes can participate
+	// in vNext discovery; applying it to v1 materialization would retroactively
+	// require legacy routing documents to have governance identity metadata.
+	service := configuredCapabilityServiceFor(s)
 	if service == nil {
 		return nil
 	}
@@ -99,31 +110,20 @@ func addCapabilityTools(server *mcp.Server, app *Server) {
 	if service == nil {
 		return
 	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "search_capabilities",
-		Description: "Experimental scoped capability discovery across skills, playbooks, and metadata-only MCP tools. Results stay compact; full tool schemas require explicit describe_capability selection. Skillet never executes discovered tools.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input searchCapabilitiesInput) (*mcp.CallToolResult, searchCapabilitiesOutput, error) {
-		return app.searchCapabilitiesTool(ctx, service, input)
+	mcp.AddTool(server, &mcp.Tool{Name: "search_capabilities", Description: "Search reusable task capabilities (skills, playbooks, and configured MCP tool metadata) in an explicit organization/namespace/repository scope. Scope filters eligibility and never boosts relevance. Returned MCP schemas are metadata only; Skillet does not execute discovered tools."}, func(ctx context.Context, req *mcp.CallToolRequest, input searchCapabilitiesInput) (*mcp.CallToolResult, searchCapabilitiesOutput, error) {
+		return app.searchCapabilitiesTool(ctx, service, req, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "describe_capability",
-		Description: "Describe one explicitly selected capability and its provenance. Tool schemas are returned as untrusted metadata only; this never invokes a discovered tool or substitutes a successor.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
-		return app.describeCapabilityTool(ctx, service, input)
+	mcp.AddTool(server, &mcp.Tool{Name: "describe_capability", Description: "Describe one explicitly selected capability revision. Skill bodies remain behind materialize_skill; tool schemas are returned only as untrusted metadata and are not executed."}, func(ctx context.Context, req *mcp.CallToolRequest, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
+		return app.describeCapabilityTool(ctx, service, req, input)
 	})
 }
 
-func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability.Service, input searchCapabilitiesInput) (*mcp.CallToolResult, searchCapabilitiesOutput, error) {
+func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability.Service, _ *mcp.CallToolRequest, input searchCapabilitiesInput) (*mcp.CallToolResult, searchCapabilitiesOutput, error) {
+	if service == nil {
+		return nil, searchCapabilitiesOutput{}, fmt.Errorf("capability service is unavailable")
+	}
 	if len(input.Query) > 4000 || len(input.Context) > 8000 {
 		return nil, searchCapabilitiesOutput{}, fmt.Errorf("query or context exceeds limit")
-	}
-	organizationID := s.organizationID
-	if authenticated, ok := OrganizationID(ctx); ok {
-		organizationID = authenticated
-	}
-	scope, err := capability.NewScope(organizationID, input.Scope.Namespace, input.Scope.Repository)
-	if err != nil {
-		return nil, searchCapabilitiesOutput{}, err
 	}
 	limit := input.Limit
 	if limit == 0 {
@@ -138,6 +138,14 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	}
 	if limit < 1 || limit > maxLimit {
 		return nil, searchCapabilitiesOutput{}, fmt.Errorf("limit must be between 1 and %d", maxLimit)
+	}
+	organizationID := s.organizationID
+	if authenticated, ok := OrganizationID(ctx); ok {
+		organizationID = authenticated
+	}
+	scope, err := capability.NewScope(organizationID, input.Scope.Namespace, input.Scope.Repository)
+	if err != nil {
+		return nil, searchCapabilitiesOutput{}, err
 	}
 	lexicalDepth, vectorDepth, rrfK := s.lexicalDepth, s.vectorDepth, s.rrfK
 	if lexicalDepth <= 0 {
@@ -165,32 +173,25 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	if err != nil {
 		return nil, searchCapabilitiesOutput{}, err
 	}
-	queryID := fmt.Sprintf("cap_%x", sha256.Sum256([]byte(input.Query+"\x00"+input.Context+"\x00"+scope.Namespace+"\x00"+scope.Repository+"\x00"+time.Now().UTC().Format(time.RFC3339Nano))))
-	out := searchCapabilitiesOutput{
-		QueryID:    queryID,
-		Degraded:   map[string]bool{"embedding": degraded},
-		Candidates: make([]capabilityCandidate, 0, len(results)),
-	}
+	queryID := fmt.Sprintf("cap_%x", sha256.Sum256([]byte(query+"\x00"+scope.Organization+"\x00"+scope.Namespace+"\x00"+scope.Repository+time.Now().UTC().Format(time.RFC3339Nano))))
+	out := searchCapabilitiesOutput{QueryID: queryID, Degraded: map[string]bool{"embedding": degraded}, Candidates: make([]capabilityCandidate, 0, len(results))}
 	for _, result := range results {
-		token, err := s.signer.Sign(candidate.Payload{
-			Version: 1, OrganizationID: organizationID, RevisionID: result.Capability.Provenance.RevisionID,
-			QueryID: queryID, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
-		})
+		token, err := s.signer.Sign(candidate.Payload{Version: 1, OrganizationID: organizationID, RevisionID: result.Capability.Provenance.RevisionID, QueryID: queryID, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(30 * time.Minute).Unix()})
 		if err != nil {
 			return nil, searchCapabilitiesOutput{}, err
 		}
 		out.Candidates = append(out.Candidates, capabilityCandidate{CandidateID: token, Capability: result.Capability, Ranking: result.Ranking})
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Found %d scoped capability candidate(s). Explicitly select before describing or materializing; discovered tools are metadata only.", len(out.Candidates))}}}, out, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Found %d scoped capability candidate(s). Review and explicitly select one before progressive disclosure or materialisation.", len(out.Candidates))}}}, out, nil
 }
 
-func (s *Server) describeCapabilityTool(ctx context.Context, service *capability.Service, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
+func (s *Server) describeCapabilityTool(ctx context.Context, service *capability.Service, _ *mcp.CallToolRequest, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
+	if service == nil {
+		return nil, describeCapabilityOutput{}, fmt.Errorf("capability service is unavailable")
+	}
 	organizationID := s.organizationID
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
-	}
-	if input.CandidateID == "" {
-		return nil, describeCapabilityOutput{}, fmt.Errorf("candidate_id is required")
 	}
 	payload, err := s.signer.Verify(input.CandidateID, organizationID, time.Now())
 	if err != nil {
@@ -204,25 +205,9 @@ func (s *Server) describeCapabilityTool(ctx context.Context, service *capability
 	if err != nil {
 		return nil, describeCapabilityOutput{}, err
 	}
-	descriptor := detail.Descriptor
-	materializeCandidateID := ""
-	if descriptor.Identity.Kind == capability.KindSkill {
-		detail.MaterializeWith = "materialize_skill"
-		materializeCandidateID = input.CandidateID
-		if s.catalogue != nil {
-			info, err := s.catalogue.Revision(ctx, organizationID, payload.RevisionID)
-			if err != nil {
-				return nil, describeCapabilityOutput{}, err
-			}
-			if info.SkillID != descriptor.Identity.ID || info.Commit != descriptor.Provenance.Commit || info.Tree != descriptor.Provenance.Tree {
-				return nil, describeCapabilityOutput{}, fmt.Errorf("capability provenance no longer matches selected revision")
-			}
-			detail.Descriptor.Source.URL = info.RepositoryURL
-			detail.Descriptor.Source.RepositoryID = info.RepositoryID
-			detail.Descriptor.Provenance.ArchiveSHA256TarGZ = info.ArchiveSHA256TarGZ
-			detail.Descriptor.Provenance.ArchiveSHA256ZIP = info.ArchiveSHA256ZIP
-			detail.PackageDigests = capability.PackageDigests{TarGZ: info.ArchiveSHA256TarGZ, ZIP: info.ArchiveSHA256ZIP}
-		}
+	out := describeCapabilityOutput{Detail: detail}
+	if detail.Descriptor.Identity.Kind == capability.KindSkill {
+		out.MaterializeCandidateID = input.CandidateID
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Capability described after explicit selection. MCP tool schemas, when present, are untrusted metadata and no tool execution was performed."}}}, describeCapabilityOutput{Detail: detail, MaterializeCandidateID: materializeCandidateID}, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Capability detail disclosed for the explicitly selected immutable revision. Tool schemas remain untrusted metadata and no tool execution occurred."}}}, out, nil
 }
