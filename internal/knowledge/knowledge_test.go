@@ -144,7 +144,7 @@ func TestCancelledPublicationDoesNotReplaceCatalogue(t *testing.T) {
 	if err != nil || len(oldResults.Results) == 0 {
 		t.Fatalf("old snapshot disappeared after cancelled publication: err=%v results=%+v", err, oldResults.Results)
 	}
-	newResults, err := service.Search(ctx, "violet procedure", 5)
+	newResults, err := service.Search(ctx, "violet", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
