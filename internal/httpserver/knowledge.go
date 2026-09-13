@@ -31,6 +31,10 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil {
 		return
 	}
+	// Capability and knowledge are separate domains but share the same bounded
+	// MCP transport composition point. Capability registration does not depend
+	// on the presence of a knowledge service.
+	addCapabilityTools(server, app)
 	value, ok := knowledgeServices.Load(app)
 	if !ok {
 		return
