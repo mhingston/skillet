@@ -29,8 +29,8 @@ Case-folded concept-path collisions (for example `Policy.md` and `policy.md`) ar
 `skillet-knowledge-mcp` exposes exactly three knowledge operations over stateless Streamable HTTP MCP:
 
 - `search_knowledge`: bounded to 10 compact results and returns source revision plus preserved OKF metadata/provenance;
-- `read_knowledge`: reads one selected chunk and its document-level provenance/outgoing explicit links;
-- `get_backlinks`: returns only resolved incoming Markdown links. No semantic relationship inference is performed.
+- `read_knowledge`: reads one selected chunk and at most 50 document-level outgoing explicit links;
+- `get_backlinks`: returns only resolved incoming Markdown links, defaulting to 25 and capped at 50. No semantic relationship inference is performed.
 
 Returned document text and metadata are untrusted data. They are never interpreted as registry/server instructions and no execution broker is introduced.
 
@@ -47,8 +47,10 @@ go run ./cmd/skillet-knowledge-mcp \
 
 The MCP endpoint is `http://127.0.0.1:8081/mcp` by default.
 
-## Verification
+## Verification and fixture provenance
 
-The checked-in fixture under `internal/knowledge/testdata/okf-v02` is synthetic repository-owned test data shaped after the public OKF v0.2 specification. The offline E2E starts a real Streamable HTTP MCP server, searches and reads knowledge, checks provenance and backlinks, performs add/update/delete reconciliation, verifies stable unchanged identity, and proves a malformed follow-up cannot corrupt the last committed state.
+The checked-in fixture under `internal/knowledge/testdata/okf-v02` is adapted from the real-bundle templates and condensed specification in `aws-samples/sample-okf-llm-wiki`, pinned to commit `f3465f04a84715781b6bfbdd65278a4261f2a519`. `ATTRIBUTION.txt` records the upstream repository, files, revision, and MIT No Attribution licence. The business content is intentionally rewritten as deterministic repository-owned data so the E2E stays offline and carries no upstream/customer data.
+
+The offline E2E starts a real Streamable HTTP MCP server, searches and reads knowledge, checks provenance and explicit backlinks, performs add/update/delete reconciliation, verifies stable unchanged identity, and proves a malformed follow-up cannot corrupt the last committed state. Parser/security tests cover missing required metadata, case-folded identity collisions, symbolic-link escape attempts, oversized concepts, traversal links, and broken links.
 
 The #32 verification gate already runs `go test ./...`, so the OKF E2E and negative parser/security cases are part of the same project gate while the protected #34 retrieval metrics remain unchanged.
