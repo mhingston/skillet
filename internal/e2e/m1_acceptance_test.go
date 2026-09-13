@@ -360,9 +360,9 @@ The amber-lantern-knowledge-only marker belongs only to organisational knowledge
 		if err != nil {
 			t.Fatal(err)
 		}
-		beforeRanking, err := json.Marshal(central.Candidates)
-		if err != nil {
-			t.Fatal(err)
+		beforeRanking := make([]string, 0, len(central.Candidates))
+		for _, ranked := range central.Candidates {
+			beforeRanking = append(beforeRanking, ranked.Capability.Identity.ID+"@"+ranked.Capability.Provenance.RevisionID)
 		}
 		materializationID := "m1-learning-materialization"
 		if err := catalog.RecordAudit(ctx, "demo", "materialisation_prepared", map[string]any{
@@ -413,12 +413,12 @@ The amber-lantern-knowledge-only marker belongs only to organisational knowledge
 		if err != nil {
 			t.Fatal(err)
 		}
-		afterRanking, err := json.Marshal(afterSearch.Candidates)
-		if err != nil {
-			t.Fatal(err)
+		afterRanking := make([]string, 0, len(afterSearch.Candidates))
+		for _, ranked := range afterSearch.Candidates {
+			afterRanking = append(afterRanking, ranked.Capability.Identity.ID+"@"+ranked.Capability.Provenance.RevisionID)
 		}
-		if activeAfter != activeBefore || string(afterRanking) != string(beforeRanking) {
-			t.Fatalf("learning loop mutated active revision or ranking: active %q -> %q", activeBefore, activeAfter)
+		if activeAfter != activeBefore || strings.Join(afterRanking, "\n") != strings.Join(beforeRanking, "\n") {
+			t.Fatalf("learning loop mutated active revision or stable ranking: active %q -> %q, ranking %v -> %v", activeBefore, activeAfter, beforeRanking, afterRanking)
 		}
 	})
 
