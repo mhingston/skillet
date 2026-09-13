@@ -92,8 +92,25 @@ func main() {
 		slog.Error("load search index failed", "error", err)
 		os.Exit(2)
 	}
-	if err := index.Rebuild(docs); err != nil {
+	capabilityIndex := index
+	if hasScopedCapabilitySources(c.Repositories) {
+		capabilityIndex, err = search.New(embedder)
+		if err != nil {
+			slog.Error("capability search index failed", "error", err)
+			os.Exit(2)
+		}
+		if err := capabilityIndex.Rebuild(docs); err != nil {
+			slog.Error("capability index document failed", "error", err)
+			os.Exit(2)
+		}
+	}
+	if err := index.Rebuild(legacyRoutingDocuments(docs, c.Repositories)); err != nil {
 		slog.Error("index document failed", "error", err)
+		os.Exit(2)
+	}
+	capabilityService, err := configuredCapabilityService(capabilityIndex, c)
+	if err != nil {
+		slog.Error("capability configuration failed", "error", err)
 		os.Exit(2)
 	}
 	knowledgeService, err := knowledge.Open(ctx, filepath.Join(c.Server.DataDir, "knowledge"), knowledge.Options{
@@ -153,6 +170,7 @@ func main() {
 	} else {
 		app = httpserver.NewWithSearch(slog.Default(), ready, index, c.Organization.ID, candidate.Signer{Key: []byte(candidateKey)})
 	}
+	app.ConfigureCapabilities(capabilityService)
 	app.ConfigureKnowledge(knowledgeService)
 	if packageURLTTL, parseErr := time.ParseDuration(c.Packages.SignedURLTTL); parseErr == nil {
 		app.ConfigurePackageURLTTL(packageURLTTL)
@@ -277,7 +295,12 @@ func main() {
 					} else if run.Outcome == polling.Synchronized || run.Outcome == polling.SkippedUnchanged {
 						if run.Outcome == polling.Synchronized {
 							if refreshed, refreshErr := catalog.RoutingDocuments(ctx, c.Organization.ID, c.Search.SearchableMetadataKeys); refreshErr == nil {
-								_ = index.Rebuild(refreshed)
+								if capabilityIndex != index {
+									_ = capabilityIndex.Rebuild(refreshed)
+									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
+								} else {
+									_ = index.Rebuild(refreshed)
+								}
 								app.Metrics().ActiveSkills.Store(uint64(len(refreshed)))
 							}
 							slog.Info("repository sync succeeded", "repository", repo.ID, "commit", run.Commit, "admitted", run.Sync.Admitted, "quarantined", run.Sync.Quarantined)
