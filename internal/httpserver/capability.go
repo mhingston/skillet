@@ -26,6 +26,32 @@ func (s *Server) ConfigureCapabilities(service *capability.Service) {
 	capabilityServices.Store(s, service)
 }
 
+func capabilityServiceFor(app *Server) *capability.Service {
+	if app == nil {
+		return nil
+	}
+	if value, ok := capabilityServices.Load(app); ok {
+		service, _ := value.(*capability.Service)
+		return service
+	}
+	if app.search != nil {
+		// Existing sources are central by default, so vNext capability discovery
+		// is available without requiring a migration. A configured capability
+		// service replaces this projection when scoped or non-skill sources exist.
+		service, _ := capability.New(app.search, nil)
+		return service
+	}
+	return nil
+}
+
+func (s *Server) validateCapabilityNewSelection(revisionID string) error {
+	service := capabilityServiceFor(s)
+	if service == nil {
+		return nil
+	}
+	return service.AllowsNewSelection(revisionID)
+}
+
 type capabilityScopeInput struct {
 	Namespace  string `json:"namespace,omitempty"`
 	Repository string `json:"repository,omitempty"`
@@ -69,15 +95,7 @@ func addCapabilityTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil {
 		return
 	}
-	var service *capability.Service
-	if value, ok := capabilityServices.Load(app); ok {
-		service, _ = value.(*capability.Service)
-	} else if app.search != nil {
-		// Existing sources are central by default, so vNext capability discovery
-		// is available without requiring a migration. A configured capability
-		// service replaces this projection when scoped or non-skill sources exist.
-		service, _ = capability.New(app.search, nil)
-	}
+	service := capabilityServiceFor(app)
 	if service == nil {
 		return
 	}
@@ -135,8 +153,12 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	if input.Context != "" {
 		query += "\n" + input.Context
 	}
+	trustLevels := input.Filters.TrustLevels
+	if len(trustLevels) == 0 {
+		trustLevels = []string{"approved"}
+	}
 	results, degraded, err := service.Search(query, lexicalDepth, vectorDepth, limit, rrfK, scope, search.Filters{
-		TrustLevels: input.Filters.TrustLevels,
+		TrustLevels: trustLevels,
 		HasScripts:  input.Filters.HasScripts,
 		Metadata:    input.Filters.Metadata,
 	})
