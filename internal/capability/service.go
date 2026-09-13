@@ -68,9 +68,9 @@ func (s *Service) List(request Scope, filters search.Filters) ([]search.Document
 	return out, nil
 }
 
-// Search applies scope as an eligibility constraint without adding any local
-// preference. Hidden candidates may occupy source ranks but cannot appear in
-// results or semantic-neighbour evidence.
+// Search applies scope as an eligibility constraint before relevance ranking.
+// Scope therefore cannot boost local candidates, and ineligible repositories
+// cannot perturb RRF/vector ranks or appear in semantic-neighbour evidence.
 func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK int, request Scope, filters search.Filters) ([]Candidate, bool, error) {
 	if err := request.Validate(); err != nil {
 		return nil, false, err
@@ -81,26 +81,30 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 	filters.OrganizationID = request.Organization
 	all := s.index.List(filters)
 	visible := make(map[string]Descriptor, len(all))
+	eligibleRepositories := make(map[string]struct{})
 	for _, doc := range all {
 		if s.visible(doc, request) {
 			visible[doc.ID] = descriptorFromDocument(doc, s.ScopeForDocument(doc))
+			eligibleRepositories[doc.RepositoryID] = struct{}{}
 		}
 	}
-	// Scope is applied after the ordinary relevance rank. Search deeply enough
-	// to ensure hidden local sources cannot crowd an eligible candidate out of
-	// the deterministic result set. The search still runs when nothing is
-	// visible so degradation reporting retains the same semantics as v1.
-	if lexicalDepth < len(all) {
-		lexicalDepth = len(all)
+	if len(visible) == 0 {
+		return []Candidate{}, false, nil
 	}
-	if vectorDepth < len(all) {
-		vectorDepth = len(all)
+	filters.Repositories = filters.Repositories[:0]
+	for repositoryID := range eligibleRepositories {
+		filters.Repositories = append(filters.Repositories, repositoryID)
 	}
-	searchLimit := len(all)
-	if searchLimit < 1 {
-		searchLimit = 1
+	sort.Strings(filters.Repositories)
+
+	eligibleCount := len(visible)
+	if lexicalDepth < eligibleCount {
+		lexicalDepth = eligibleCount
 	}
-	hits, degraded, err := s.index.SearchWithFilters(query, lexicalDepth, vectorDepth, searchLimit, rrfK, filters)
+	if vectorDepth < eligibleCount {
+		vectorDepth = eligibleCount
+	}
+	hits, degraded, err := s.index.SearchWithFilters(query, lexicalDepth, vectorDepth, eligibleCount, rrfK, filters)
 	if err != nil {
 		return nil, degraded, err
 	}
