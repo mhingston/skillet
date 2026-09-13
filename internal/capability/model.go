@@ -1,10 +1,11 @@
 // Package capability owns Skillet's task-capability discovery domain.
 //
-// Capability metadata is deliberately compact. Full package contents remain
-// behind the existing explicit materialisation boundary.
+// Capability metadata is deliberately compact. Full package contents and full
+// MCP tool schemas remain behind explicit progressive-disclosure boundaries.
 package capability
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
@@ -15,6 +16,7 @@ type Kind string
 const (
 	KindSkill    Kind = "skill"
 	KindPlaybook Kind = "playbook"
+	KindTool     Kind = "tool"
 )
 
 type Status string
@@ -134,14 +136,33 @@ type PackageDigests struct {
 	ZIP   string `json:"zip,omitempty"`
 }
 
+// ToolDetail is returned only after explicit capability selection. InputSchema
+// is untrusted MCP metadata and is never interpreted as a Skillet instruction
+// or executable operation.
+type ToolDetail struct {
+	ServerID           string          `json:"server_id"`
+	ServerTitle        string          `json:"server_title,omitempty"`
+	Name               string          `json:"name"`
+	Title              string          `json:"title,omitempty"`
+	InputSchema         json.RawMessage `json:"input_schema"`
+	InputSchemaSummary string          `json:"input_schema_summary"`
+	InputSchemaSHA256  string          `json:"input_schema_sha256"`
+	Compatibility      string          `json:"compatibility,omitempty"`
+	Auth               string          `json:"auth,omitempty"`
+	Source             string          `json:"source,omitempty"`
+	UntrustedMetadata  bool            `json:"untrusted_metadata"`
+	ExecutionSupported bool            `json:"execution_supported"`
+}
+
 type Detail struct {
 	Descriptor      Descriptor     `json:"capability"`
 	PackageDigests  PackageDigests `json:"package_digests,omitempty"`
 	MaterializeWith string         `json:"materialize_with,omitempty"`
+	Tool            *ToolDetail    `json:"tool,omitempty"`
 }
 
-// SourcePolicy binds a source repository to visibility scope. RepositoryID is
-// the catalogue/search repository id (without the organisation prefix).
+// SourcePolicy binds a source repository/catalogue to visibility scope.
+// RepositoryID is the routing source id (without the organisation prefix).
 type SourcePolicy struct {
 	RepositoryID string
 	Scope        Scope
