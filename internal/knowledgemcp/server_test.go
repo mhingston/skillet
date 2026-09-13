@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -44,7 +45,10 @@ commonterm [target](target.md)
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(Handler(service, 1<<20))
+	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "knowledge-contract-test", Version: "1"}, nil)
+	AddTools(mcpServer, service)
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 1 << 20})
+	server := httptest.NewServer(handler)
 	defer server.Close()
 	client := mcp.NewClient(&mcp.Implementation{Name: "contract-test", Version: "1"}, nil)
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, DisableStandaloneSSE: true, MaxRetries: -1}, nil)
