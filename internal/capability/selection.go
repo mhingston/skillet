@@ -2,6 +2,18 @@ package capability
 
 import "fmt"
 
+// HasRevision reports whether a revision is represented in the current
+// capability routing index. Retained historical revisions can exist in the
+// catalogue without being discovery candidates, so callers can use this to
+// choose the correct governance authority without widening discovery.
+func (s *Service) HasRevision(revisionID string) bool {
+	if s == nil || revisionID == "" {
+		return false
+	}
+	_, ok := s.index.Document(revisionID)
+	return ok
+}
+
 // AllowsNewSelection revalidates the current governance state immediately
 // before ordinary materialization. It deliberately does not participate in
 // exact lock restoration, which resolves immutable catalogue/package state
