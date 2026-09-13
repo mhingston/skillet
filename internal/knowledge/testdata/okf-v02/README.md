@@ -1,5 +1,0 @@
-# Skillet OKF test fixture
-
-Synthetic organisational-knowledge fixture for Skillet's OKF ingestion tests.
-
-The shape follows the public Open Knowledge Format v0.2 convention (Markdown concepts with YAML frontmatter and ordinary Markdown links), but the content and metadata here are original test data created for this repository. No external sample implementation or service is required.
