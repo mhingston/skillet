@@ -59,7 +59,7 @@ metadata:
   skillet.replaced_by: "demo/central/new-skill"
 ```
 
-`skillet.deprecated: "true"` requires a non-empty `skillet.replaced_by`; `replaced_by` without deprecation is invalid. The equivalent typed state is `deprecated`.
+`skillet.deprecated: "true"` requires a non-empty `skillet.replaced_by`; `replaced_by` without deprecation is invalid. The equivalent typed state is `deprecated`. Contradictory typed and legacy declarations are rejected rather than resolved by precedence.
 
 Successor lineage is guidance, never an alias:
 
@@ -72,7 +72,7 @@ Successor lineage is guidance, never an alias:
 
 ## Discovery and relevance
 
-Normal `search_capabilities` discovery defaults to approved sources. Searchability, scope, lifecycle state, and approval are eligibility/control decisions. The following reserved keys are excluded from lexical and embedding routing text:
+Normal `search_capabilities` discovery defaults to approved sources. Searchability, scope, lifecycle state, and approval are eligibility/control decisions. The following reserved keys are excluded from lexical routing text, embedding input, and model-reranker candidate metadata:
 
 - `skillet.governance.state`
 - `skillet.governance.owner`
@@ -83,7 +83,7 @@ Normal `search_capabilities` discovery defaults to approved sources. Searchabili
 
 Changing ownership, maintainers, lifecycle state, reason, visibility, or successor guidance therefore cannot change semantic relevance unless a future retrieval policy explicitly introduces and evaluates such a signal.
 
-When `search.searchable_metadata_keys` is configured, Skillet still retains these reserved governance keys for control-plane projection while excluding them from semantic routing text.
+When `search.searchable_metadata_keys` is configured, Skillet still retains these reserved governance keys for control-plane projection while excluding them from every relevance input.
 
 ## Reproducibility boundary
 
