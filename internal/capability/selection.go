@@ -17,7 +17,10 @@ func (s *Service) AllowsNewSelection(revisionID string) error {
 	if !ok || !doc.Searchable {
 		return fmt.Errorf("capability revision is unavailable for new selection")
 	}
-	if doc.TrustLevel != "approved" {
+	// Legacy/fallback in-memory documents can predate explicit trust metadata.
+	// Preserve that compatibility while still rejecting an explicit non-approved
+	// trust classification at the new-selection boundary.
+	if doc.TrustLevel != "" && doc.TrustLevel != "approved" {
 		return fmt.Errorf("capability revision is not approved for new selection")
 	}
 	if s.descriptorForDocument(doc).Status == StatusYanked {
