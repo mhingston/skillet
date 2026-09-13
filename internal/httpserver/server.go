@@ -846,7 +846,7 @@ func authMiddleware(next http.Handler, auth AuthConfig) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), organizationContextKey{}, identity.OrganizationID)))
+			next.ServeHTTP(w, r.WithContext(withAuthenticatedIdentity(r.Context(), identity)))
 			return
 		}
 		if auth.Mode != "static" {
@@ -871,7 +871,7 @@ func authMiddleware(next http.Handler, auth AuthConfig) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), organizationContextKey{}, auth.OrganizationID)))
+		next.ServeHTTP(w, r.WithContext(withAuthenticatedIdentity(r.Context(), authn.Identity{Subject: "static", OrganizationID: auth.OrganizationID})))
 	})
 }
 func OrganizationID(ctx context.Context) (string, bool) {
