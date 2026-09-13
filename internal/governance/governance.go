@@ -67,6 +67,9 @@ func Parse(values map[string]string, defaults Defaults) (State, Metadata, error)
 			}
 			state = StateDeprecated
 		case "false":
+			if explicit := strings.TrimSpace(values[StateKey]); explicit != "" && state == StateDeprecated {
+				return "", Metadata{}, fmt.Errorf("%s=false conflicts with governance state %q", DeprecatedKey, state)
+			}
 		default:
 			return "", Metadata{}, fmt.Errorf("%s must be true or false", DeprecatedKey)
 		}
