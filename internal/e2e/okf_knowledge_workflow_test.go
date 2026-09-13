@@ -4,15 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mhingston/skillet/internal/httpserver"
 	"github.com/mhingston/skillet/internal/knowledge"
-	"github.com/mhingston/skillet/internal/knowledgemcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -30,9 +29,9 @@ func TestOKFKnowledgeWorkflowThroughStreamableHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", knowledgemcp.Handler(service, 1<<20))
-	server := httptest.NewServer(mux)
+	app := httpserver.New(nil, nil)
+	app.ConfigureKnowledge(service)
+	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "development", OrganizationID: "demo"}))
 	defer server.Close()
 	client := mcp.NewClient(&mcp.Implementation{Name: "okf-e2e", Version: "1"}, nil)
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true, MaxRetries: -1}, nil)
