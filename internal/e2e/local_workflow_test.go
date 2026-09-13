@@ -32,8 +32,14 @@ func TestOfflineLocalAdmissionSearchAndMaterialize(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sourceRoot, "plan"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(sourceRoot, "broken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	const skillBody = "---\nname: plan\ndescription: Create a concrete implementation plan before changing code.\n---\n# Plan\n\nBuild the smallest verified slice.\n"
 	if err := os.WriteFile(filepath.Join(sourceRoot, "plan", "SKILL.md"), []byte(skillBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceRoot, "broken", "SKILL.md"), []byte("# malformed fixture without frontmatter\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,8 +71,8 @@ func TestOfflineLocalAdmissionSearchAndMaterialize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Admitted != 1 || result.Quarantined != 0 {
-		t.Fatalf("admission = %+v, want one admitted skill and no quarantine", result)
+	if result.Admitted != 1 || result.Quarantined != 1 {
+		t.Fatalf("admission = %+v, want one admitted skill and one quarantined skill", result)
 	}
 
 	docs, err := catalog.RoutingDocuments(ctx, "demo")
@@ -74,7 +80,7 @@ func TestOfflineLocalAdmissionSearchAndMaterialize(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(docs) != 1 || docs[0].Name != "plan" {
-		t.Fatalf("routing documents = %+v", docs)
+		t.Fatalf("routing documents = %+v; quarantined fixture must not be routable", docs)
 	}
 	index, err := search.New(nil)
 	if err != nil {
