@@ -35,8 +35,9 @@ func TestFeedbackToolRecordsAndListsBoundedObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{catalogue: catalog, organizationID: "demo", metrics: &Metrics{}}
+	lifecycle := lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, MaterializationID: "materialize-1"}
 	_, out, err := s.feedbackTool(ctx, nil, feedbackInput{
-		Lifecycle: lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, MaterializationID: "materialize-1"},
+		Lifecycle: lifecycle,
 		Category: "effective_pattern", Summary: "The explicit rollback verification prevented a stale generated file from being retained.", CorrelationID: "run-1", Source: "pi",
 	})
 	if err != nil {
@@ -51,6 +52,12 @@ func TestFeedbackToolRecordsAndListsBoundedObservation(t *testing.T) {
 	}
 	if len(listed.Feedback) != 1 || listed.Feedback[0].Category != "effective_pattern" || listed.HasMore {
 		t.Fatalf("listed = %+v", listed)
+	}
+
+	mismatched := lifecycle
+	mismatched.Tree = "different-tree"
+	if _, _, err := s.feedbackTool(ctx, nil, feedbackInput{Lifecycle: mismatched, Category: "step_failed", Summary: "Observed failure."}); err == nil {
+		t.Fatal("mismatched feedback provenance was accepted")
 	}
 }
 

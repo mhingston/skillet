@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "suite": "synthetic-routing-v1",
+  "passed": true,
+  "metrics": {
+    "single_top1_accuracy": 0.9333333333333333,
+    "single_recall_at3": 1,
+    "multi_recall_at5": 1,
+    "negative_false_activation_rate": 0
+  }
+}
