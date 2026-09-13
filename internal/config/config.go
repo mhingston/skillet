@@ -83,20 +83,27 @@ type MetadataRule struct {
 	MetadataKey string `yaml:"metadata_key"`
 	Equals      string `yaml:"equals"`
 }
+
+type CapabilityScope struct {
+	Namespace  string `yaml:"namespace"`
+	Repository string `yaml:"repository"`
+}
+
 type Repository struct {
-	ID                string         `yaml:"id"`
-	OrganizationID    string         `yaml:"organization_id"`
-	URL               string         `yaml:"url"`
-	Path              string         `yaml:"path"`
-	Ref               string         `yaml:"ref"`
-	PollInterval      time.Duration  `yaml:"-"`
-	PollIntervalText  string         `yaml:"poll_interval"`
-	TrustLevel        string         `yaml:"trust_level"`
-	Owner             string         `yaml:"owner"`
-	CredentialProfile string         `yaml:"credential_profile"`
-	Include           []string       `yaml:"include"`
-	Exclude           []string       `yaml:"exclude"`
-	SearchExclusions  []MetadataRule `yaml:"search_exclusions"`
+	ID                string          `yaml:"id"`
+	OrganizationID    string          `yaml:"organization_id"`
+	URL               string          `yaml:"url"`
+	Path              string          `yaml:"path"`
+	Ref               string          `yaml:"ref"`
+	PollInterval      time.Duration   `yaml:"-"`
+	PollIntervalText  string          `yaml:"poll_interval"`
+	TrustLevel        string          `yaml:"trust_level"`
+	Owner             string          `yaml:"owner"`
+	CredentialProfile string          `yaml:"credential_profile"`
+	Include           []string        `yaml:"include"`
+	Exclude           []string        `yaml:"exclude"`
+	SearchExclusions  []MetadataRule  `yaml:"search_exclusions"`
+	CapabilityScope   CapabilityScope `yaml:"capability_scope"`
 }
 
 func Load(path string) (Config, error) {
@@ -237,6 +244,9 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("repositories[%d].id duplicates %q", i, r.ID)
 		}
 		seen[r.ID] = true
+		if r.CapabilityScope.Repository != "" && r.CapabilityScope.Namespace == "" {
+			return fmt.Errorf("repositories[%d].capability_scope.repository requires namespace", i)
+		}
 		if r.URL != "" && r.Path != "" {
 			return fmt.Errorf("repositories[%d] must specify either url or path, not both", i)
 		}
