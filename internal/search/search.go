@@ -4,12 +4,11 @@ package search
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/blevesearch/bleve/v2"
+	"github.com/mhingston/skillet/internal/retrieval"
 )
 
 const semanticNeighborLimit = 3
@@ -58,7 +57,7 @@ type Hit struct {
 }
 type Index struct {
 	mu                sync.RWMutex
-	lexical           bleve.Index
+	lexical           *retrieval.LexicalIndex
 	docs              map[string]Document
 	embedder          Embedder
 	embeddingDegraded bool
@@ -66,7 +65,7 @@ type Index struct {
 }
 
 func New(embedder Embedder) (*Index, error) {
-	lexical, err := bleve.NewMemOnly(bleve.NewIndexMapping())
+	lexical, err := retrieval.NewLexicalIndex()
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +122,7 @@ func (i *Index) Remove(id string) error {
 // Rebuild replaces the derived lexical index and document set atomically from
 // the authoritative catalogue snapshot.
 func (i *Index) Rebuild(docs []Document) error {
-	lexical, err := bleve.NewMemOnly(bleve.NewIndexMapping())
+	lexical, err := retrieval.NewLexicalIndex()
 	if err != nil {
 		return err
 	}
@@ -202,7 +201,7 @@ func (i *Index) SearchWithFilters(query string, lexicalDepth, vectorDepth, limit
 		vectorDepth = 50
 	}
 	if rrfK < 1 {
-		rrfK = 60
+		rrfK = retrieval.DefaultRRFK
 	}
 	i.mu.RLock()
 	defer i.mu.RUnlock()
@@ -211,45 +210,26 @@ func (i *Index) SearchWithFilters(query string, lexicalDepth, vectorDepth, limit
 		return nil, false, err
 	}
 	vectorHits, degraded := i.vectorSearch(query, vectorDepth)
-	type rank struct {
-		id              string
-		lexical, vector int
+	lexicalRanks := filterRanks(retrieval.RankIDs(lexicalHits), i.docs, filters)
+	vectorRanks := filterRanks(retrieval.RankIDs(vectorHits), i.docs, filters)
+	fused := retrieval.ReciprocalRankFusion(rrfK, lexicalRanks, vectorRanks)
+	result := make([]Hit, 0, len(fused))
+	for _, item := range fused {
+		lexicalRank, vectorRank := 0, 0
+		if len(item.Ranks) > 0 {
+			lexicalRank = item.Ranks[0]
+		}
+		if len(item.Ranks) > 1 {
+			vectorRank = item.Ranks[1]
+		}
+		result = append(result, Hit{
+			ID:            item.ID,
+			Score:         item.Score,
+			LexicalRank:   lexicalRank,
+			VectorRank:    vectorRank,
+			MatchedFields: matchedFields(i.docs[item.ID], query),
+		})
 	}
-	ranks := map[string]*rank{}
-	for n, id := range lexicalHits {
-		if !matches(i.docs[id], filters) {
-			continue
-		}
-		ranks[id] = &rank{id: id, lexical: n + 1}
-	}
-	for n, id := range vectorHits {
-		if !matches(i.docs[id], filters) {
-			continue
-		}
-		if r := ranks[id]; r != nil {
-			r.vector = n + 1
-		} else {
-			ranks[id] = &rank{id: id, vector: n + 1}
-		}
-	}
-	result := make([]Hit, 0, len(ranks))
-	for _, r := range ranks {
-		score := 0.0
-		if r.lexical > 0 {
-			score += 1.0 / float64(rrfK+r.lexical)
-		}
-		if r.vector > 0 {
-			score += 1.0 / float64(rrfK+r.vector)
-		}
-		h := Hit{ID: r.id, Score: score, LexicalRank: r.lexical, VectorRank: r.vector, MatchedFields: matchedFields(i.docs[r.id], query)}
-		result = append(result, h)
-	}
-	sort.Slice(result, func(a, b int) bool {
-		if result[a].Score == result[b].Score {
-			return result[a].ID < result[b].ID
-		}
-		return result[a].Score > result[b].Score
-	})
 	if len(result) > limit {
 		result = result[:limit]
 	}
@@ -258,6 +238,16 @@ func (i *Index) SearchWithFilters(query string, lexicalDepth, vectorDepth, limit
 		result[n].SemanticNeighbors = i.semanticNeighborsLocked(i.docs[result[n].ID], filters, semanticNeighborLimit)
 	}
 	return result, degraded, nil
+}
+
+func filterRanks(ranks []retrieval.RankedID, docs map[string]Document, filters Filters) []retrieval.RankedID {
+	filtered := make([]retrieval.RankedID, 0, len(ranks))
+	for _, ranked := range ranks {
+		if matches(docs[ranked.ID], filters) {
+			filtered = append(filtered, ranked)
+		}
+	}
+	return filtered
 }
 
 func (i *Index) semanticNeighborsLocked(source Document, filters Filters, limit int) []SemanticNeighbor {
@@ -279,7 +269,7 @@ func (i *Index) semanticNeighborsLocked(source Document, filters Filters, limit 
 		if source.SkillID != "" && doc.SkillID == source.SkillID {
 			continue
 		}
-		score := cosine(source.Vector, doc.Vector)
+		score := retrieval.Cosine(source.Vector, doc.Vector)
 		if score <= 0 {
 			continue
 		}
@@ -342,21 +332,17 @@ func contains(values []string, target string) bool {
 }
 
 func (i *Index) lexicalSearch(query string, depth int) ([]string, error) {
-	// Queries come from natural-language MCP input. MatchQuery prevents paths,
-	// punctuation, and other ordinary prose from being interpreted as Bleve
-	// query-string operators such as fuzzy-query syntax.
-	req := bleve.NewSearchRequestOptions(bleve.NewMatchQuery(query), depth, 0, false)
-	res, err := i.lexical.Search(req)
+	ids, err := i.lexical.Search(query, depth)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(res.Hits))
-	for _, hit := range res.Hits {
-		if doc, ok := i.docs[hit.ID]; ok && doc.Searchable {
-			ids = append(ids, hit.ID)
+	filtered := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if doc, ok := i.docs[id]; ok && doc.Searchable {
+			filtered = append(filtered, id)
 		}
 	}
-	return ids, nil
+	return filtered, nil
 }
 func (i *Index) vectorSearch(query string, depth int) ([]string, bool) {
 	degraded := i.embeddingDegraded
@@ -368,47 +354,19 @@ func (i *Index) vectorSearch(query string, depth int) ([]string, bool) {
 	if err != nil {
 		return nil, true
 	}
-	type scored struct {
-		id    string
-		score float64
-	}
-	all := []scored{}
+	candidates := make([]retrieval.VectorCandidate, 0, len(i.docs))
 	for id, doc := range i.docs {
 		if !doc.Searchable || len(doc.Vector) == 0 {
 			continue
 		}
-		all = append(all, scored{id, cosine(vector, doc.Vector)})
+		candidates = append(candidates, retrieval.VectorCandidate{ID: id, Vector: doc.Vector})
 	}
-	sort.Slice(all, func(a, b int) bool {
-		if all[a].score == all[b].score {
-			return all[a].id < all[b].id
-		}
-		return all[a].score > all[b].score
-	})
-	if len(all) > depth {
-		all = all[:depth]
-	}
-	ids := make([]string, len(all))
-	for n := range all {
-		ids[n] = all[n].id
+	ranked := retrieval.RankByCosine(vector, candidates, depth)
+	ids := make([]string, len(ranked))
+	for n := range ranked {
+		ids[n] = ranked[n].ID
 	}
 	return ids, degraded
-}
-func cosine(a, b []float32) float64 {
-	if len(a) == 0 || len(a) != len(b) {
-		return 0
-	}
-	var dot, aa, bb float64
-	for n := range a {
-		x, y := float64(a[n]), float64(b[n])
-		dot += x * y
-		aa += x * x
-		bb += y * y
-	}
-	if aa == 0 || bb == 0 {
-		return 0
-	}
-	return dot / math.Sqrt(aa*bb)
 }
 func routingText(doc Document) string {
 	var b strings.Builder
