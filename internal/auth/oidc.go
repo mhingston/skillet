@@ -18,11 +18,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// OIDCConfig configures issuer discovery and a cached JSON Web Key Set.
+// OIDCConfig configures issuer discovery, trusted claim normalization, and a
+// cached JSON Web Key Set. ScopeClaim and RoleClaim are optional: the defaults
+// are scope/scp and roles respectively. AttributeClaims is opt-in.
 type OIDCConfig struct {
 	Issuer            string
 	Audience          string
 	OrganizationClaim string
+	ScopeClaim        string
+	RoleClaim         string
+	AttributeClaims   map[string]string
 	RequiredScopes    []string
 	AllowedAlgorithms []string
 	HTTPClient        *http.Client
@@ -64,9 +69,15 @@ func NewOIDCValidator(ctx context.Context, config OIDCConfig) (Validator, error)
 		return nil, err
 	}
 	validator, err := NewJWTValidator(JWTConfig{
-		Issuer: issuer, Audience: config.Audience, OrganizationClaim: config.OrganizationClaim,
-		RequiredScopes: config.RequiredScopes, AllowedAlgorithms: config.AllowedAlgorithms,
-		KeyFunc: keys.keyFunc,
+		Issuer:            issuer,
+		Audience:          config.Audience,
+		OrganizationClaim: config.OrganizationClaim,
+		ScopeClaim:        config.ScopeClaim,
+		RoleClaim:         config.RoleClaim,
+		AttributeClaims:   config.AttributeClaims,
+		RequiredScopes:    config.RequiredScopes,
+		AllowedAlgorithms: config.AllowedAlgorithms,
+		KeyFunc:           keys.keyFunc,
 	})
 	if err != nil {
 		return nil, err

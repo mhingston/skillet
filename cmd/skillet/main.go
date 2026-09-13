@@ -147,7 +147,16 @@ func main() {
 		}
 	}
 	if c.Auth.Mode == "oidc" {
-		validator, validateErr := authn.NewOIDCValidator(ctx, authn.OIDCConfig{Issuer: c.Auth.Issuer, Audience: c.Auth.Audience, OrganizationClaim: c.Auth.OrganizationClaim, RequiredScopes: []string{"skills.search", "skills.materialize"}, AllowedAlgorithms: []string{"RS256", "RS384", "RS512"}})
+		validator, validateErr := authn.NewOIDCValidator(ctx, authn.OIDCConfig{
+			Issuer:            c.Auth.Issuer,
+			Audience:          c.Auth.Audience,
+			OrganizationClaim: c.Auth.OrganizationClaim,
+			ScopeClaim:        c.Auth.ScopeClaim,
+			RoleClaim:         c.Auth.RoleClaim,
+			AttributeClaims:   c.Auth.AttributeClaims,
+			RequiredScopes:    []string{"skills.search", "skills.materialize"},
+			AllowedAlgorithms: []string{"RS256", "RS384", "RS512"},
+		})
 		if validateErr != nil {
 			slog.Error("OIDC configuration failed", "error", validateErr)
 			os.Exit(2)
