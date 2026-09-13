@@ -32,7 +32,7 @@ cases:
     query: KPI reporting dashboard
     expected_path: metrics.md
   - id: deleted-stale-document
-    query: legacy zebra escrow procedure
+    query: legacy zebra escrow
     negative: true
   - id: unrelated-negative
     query: banana photosynthesis potting compost
