@@ -62,7 +62,11 @@ func (s *Server) validateCapabilityNewSelection(revisionID string) error {
 		return service.AllowsNewSelection(revisionID)
 	}
 	if s != nil && s.catalogue != nil {
-		record, err := s.catalogue.RevisionGovernance(context.Background(), s.organizationID, revisionID)
+		// materializeTool reaches this boundary only after candidate verification
+		// plus organization-scoped Catalogue.Revision/ResolveVersion resolution.
+		// Revalidate the already-authorized immutable revision without falling back
+		// to the server's default organization in multi-tenant authenticated flows.
+		record, err := s.catalogue.ResolvedRevisionGovernance(context.Background(), revisionID)
 		if err != nil {
 			return fmt.Errorf("resolve capability governance: %w", err)
 		}
@@ -210,6 +214,9 @@ func (s *Server) describeCapabilityTool(ctx context.Context, service *capability
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
 	}
+	if input.CandidateID == "" {
+		return nil, describeCapabilityOutput{}, fmt.Errorf("candidate_id is required")
+	}
 	payload, err := s.signer.Verify(input.CandidateID, organizationID, time.Now())
 	if err != nil {
 		return nil, describeCapabilityOutput{}, err
@@ -222,9 +229,26 @@ func (s *Server) describeCapabilityTool(ctx context.Context, service *capability
 	if err != nil {
 		return nil, describeCapabilityOutput{}, err
 	}
-	out := describeCapabilityOutput{Detail: detail}
+
+	materializeCandidateID := ""
 	if detail.Descriptor.Identity.Kind == capability.KindSkill {
-		out.MaterializeCandidateID = input.CandidateID
+		detail.MaterializeWith = "materialize_skill"
+		materializeCandidateID = input.CandidateID
+		if s.catalogue != nil {
+			info, err := s.catalogue.Revision(ctx, organizationID, payload.RevisionID)
+			if err != nil {
+				return nil, describeCapabilityOutput{}, err
+			}
+			if info.SkillID != detail.Descriptor.Identity.ID || info.Commit != detail.Descriptor.Provenance.Commit || info.Tree != detail.Descriptor.Provenance.Tree {
+				return nil, describeCapabilityOutput{}, fmt.Errorf("capability provenance no longer matches selected revision")
+			}
+			detail.Descriptor.Source.URL = info.RepositoryURL
+			detail.Descriptor.Source.RepositoryID = info.RepositoryID
+			detail.Descriptor.Provenance.ArchiveSHA256TarGZ = info.ArchiveSHA256TarGZ
+			detail.Descriptor.Provenance.ArchiveSHA256ZIP = info.ArchiveSHA256ZIP
+			detail.PackageDigests = capability.PackageDigests{TarGZ: info.ArchiveSHA256TarGZ, ZIP: info.ArchiveSHA256ZIP}
+		}
 	}
+	out := describeCapabilityOutput{Detail: detail, MaterializeCandidateID: materializeCandidateID}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Capability detail disclosed for the explicitly selected immutable revision. Tool schemas remain untrusted metadata and no tool execution occurred."}}}, out, nil
 }
