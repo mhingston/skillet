@@ -47,8 +47,6 @@ func TestOfflineM1IntegratedAcceptance(t *testing.T) {
 	packages := packagestore.New(filepath.Join(root, "packages"))
 	catalog := catalogue.New(db, packages)
 
-	// One small organisation: central capabilities plus two repository-local
-	// sources with overlapping language, governance cases and one malformed skill.
 	centralRoot := filepath.Join(root, "central")
 	writeGovernanceSkill(t, centralRoot, "release", "production release verification rollout central skill", nil)
 	writeGovernanceSkill(t, centralRoot, "legacy-release", "legacy release workflow retained for explicit selection", map[string]string{
@@ -131,22 +129,53 @@ func TestOfflineM1IntegratedAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bundleRoot := filepath.Join(root, "knowledge")
-	copyFixtureTree(t, filepath.Join("..", "knowledge", "testdata", "okf-v02"), bundleRoot)
-	if err := os.WriteFile(filepath.Join(bundleRoot, "plain.md"), []byte("# Local operations note\n\nThe amber-lantern-knowledge-only marker belongs only to organisational knowledge.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	knowledgeService, err := knowledge.Open(ctx, filepath.Join(root, "knowledge-data"), knowledge.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer knowledgeService.Close()
+
+	// Prove plain Markdown ingestion first; the authoritative snapshot is then
+	// deliberately replaced with an OKF snapshot because Reindex/ReindexOKF each
+	// publish a complete snapshot rather than merging incompatible source modes.
+	plainRoot := filepath.Join(root, "plain-knowledge")
+	if err := os.MkdirAll(plainRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(plainRoot, "operations.md"), []byte("# Operations note\n\n## Recovery\n\nThe plain-markdown-knowledge-only marker proves ordinary Markdown ingestion.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := knowledgeService.Reindex(ctx, []knowledge.Source{{ID: "plain", Root: plainRoot, Locator: "git://fixture/plain", Revision: "plain-v1"}}); err != nil {
+		t.Fatal(err)
+	}
+	plainSearch, err := knowledgeService.Search(ctx, "plain-markdown-knowledge-only", 5)
+	if err != nil || len(plainSearch.Results) == 0 || plainSearch.Results[0].SourceRevision != "plain-v1" {
+		t.Fatalf("plain Markdown knowledge ingestion: results=%+v err=%v", plainSearch.Results, err)
+	}
+
+	bundleRoot := filepath.Join(root, "knowledge")
+	copyFixtureTree(t, filepath.Join("..", "knowledge", "testdata", "okf-v02"), bundleRoot)
+	if err := os.WriteFile(filepath.Join(bundleRoot, "knowledge-only.md"), []byte(`---
+type: Reference
+title: Knowledge-only marker
+description: Marker proving knowledge is not cross-ranked with capabilities.
+sources:
+  - id: fixture-source
+    resource: https://example.invalid/knowledge-only
+generated: {by: process:m1-fixture, at: 2026-09-13T12:00:00Z}
+status: stable
+---
+
+# Marker
+
+The amber-lantern-knowledge-only marker belongs only to organisational knowledge.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := knowledgeService.ReindexOKF(ctx, []knowledge.OKFBundle{{ID: "org-knowledge", Root: bundleRoot, Locator: "git://fixture/org-knowledge", Revision: "knowledge-v1"}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Use a real listener rather than httptest.NewServer so the same live local
-	// address can be embedded in signed package URLs returned by materialize_skill.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -251,9 +280,9 @@ func TestOfflineM1IntegratedAcceptance(t *testing.T) {
 		if backlinks := callBacklinks(t, ctx, session, selected.Result.DocumentID); len(backlinks) == 0 {
 			t.Fatal("expected explicit backlink")
 		}
-		plain := callKnowledgeSearch(t, ctx, session, "amber-lantern-knowledge-only", 5)
-		if len(plain.Results) == 0 {
-			t.Fatal("plain Markdown knowledge was not indexed with OKF bundle")
+		knowledgeOnly := callKnowledgeSearch(t, ctx, session, "amber-lantern-knowledge-only", 5)
+		if len(knowledgeOnly.Results) == 0 {
+			t.Fatal("OKF knowledge-only marker was not indexed")
 		}
 		capabilityLeak, err := client.SearchCapabilities(ctx, "amber-lantern-knowledge-only", adapter.CapabilityScope{}, 10)
 		if err != nil {
