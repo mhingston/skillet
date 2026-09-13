@@ -50,6 +50,12 @@ func TestAuthClaimMappingValidationFailsClosed(t *testing.T) {
 		{name: "attribute name whitespace", mutate: func(a *Auth) { a.AttributeClaims = map[string]string{"group ids": "groups"} }},
 		{name: "empty attribute source", mutate: func(a *Auth) { a.AttributeClaims = map[string]string{"groups": ""} }},
 		{name: "duplicate scope role source", mutate: func(a *Auth) { a.ScopeClaim, a.RoleClaim = "permissions", "permissions" }},
+		{name: "custom scope collides with default role", mutate: func(a *Auth) { a.ScopeClaim = "roles" }},
+		{name: "custom role collides with default scope", mutate: func(a *Auth) { a.RoleClaim = "scope" }},
+		{name: "custom role collides with scope fallback", mutate: func(a *Auth) { a.RoleClaim = "scp" }},
+		{name: "scope collides with organization", mutate: func(a *Auth) { a.ScopeClaim = "organization_id" }},
+		{name: "attribute collides with organization", mutate: func(a *Auth) { a.AttributeClaims = map[string]string{"groups": "organization_id"} }},
+		{name: "attribute collides with default scope", mutate: func(a *Auth) { a.AttributeClaims = map[string]string{"groups": "scope"} }},
 		{name: "duplicate attribute source", mutate: func(a *Auth) { a.AttributeClaims = map[string]string{"groups": "shared", "entitlements": "shared"} }},
 	}
 	for _, tt := range tests {
