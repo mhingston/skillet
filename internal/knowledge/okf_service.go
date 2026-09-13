@@ -6,6 +6,12 @@ import (
 	"fmt"
 )
 
+const (
+	defaultBacklinkLimit = 25
+	maxBacklinkLimit     = 50
+	maxOutgoingLinkRead  = 50
+)
+
 const okfSchema = `
 CREATE TABLE IF NOT EXISTS knowledge_okf_documents (
     document_id TEXT PRIMARY KEY REFERENCES knowledge_documents(id) ON DELETE CASCADE,
@@ -152,7 +158,7 @@ func (s *Service) SearchOKF(ctx context.Context, query string, limit int) (OKFSe
 }
 
 // ReadOKF returns one selected chunk plus its document-level OKF provenance and
-// explicit outgoing links.
+// a bounded projection of explicit outgoing links.
 func (s *Service) ReadOKF(ctx context.Context, chunkID string) (OKFRead, error) {
 	if err := s.ensureOKFSchema(ctx); err != nil {
 		return OKFRead{}, err
@@ -171,9 +177,16 @@ func (s *Service) ReadOKF(ctx context.Context, chunkID string) (OKFRead, error) 
 }
 
 // GetBacklinks returns only resolved, explicit Markdown links into documentID.
-func (s *Service) GetBacklinks(ctx context.Context, documentID string) ([]Backlink, error) {
+// The result set is always bounded for progressive disclosure.
+func (s *Service) GetBacklinks(ctx context.Context, documentID string, limit int) ([]Backlink, error) {
 	if err := s.ensureOKFSchema(ctx); err != nil {
 		return nil, err
+	}
+	if limit < 1 {
+		limit = defaultBacklinkLimit
+	}
+	if limit > maxBacklinkLimit {
+		limit = maxBacklinkLimit
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -183,7 +196,8 @@ FROM knowledge_okf_links l
 JOIN knowledge_documents d ON d.id = l.source_document_id
 JOIN knowledge_okf_documents m ON m.document_id = l.source_document_id
 WHERE l.resolved = 1 AND l.target_document_id = ?
-ORDER BY d.relative_path, l.ordinal`, documentID)
+ORDER BY d.relative_path, l.ordinal
+LIMIT ?`, documentID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query OKF backlinks: %w", err)
 	}
@@ -222,7 +236,7 @@ func (s *Service) loadOKFDetail(ctx context.Context, documentID string) (Metadat
 	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
 		return Metadata{}, nil, fmt.Errorf("decode OKF metadata for %q: %w", documentID, err)
 	}
-	rows, err := s.catalog.db.QueryContext(ctx, `SELECT link_text, target_path, COALESCE(target_document_id, ''), resolved FROM knowledge_okf_links WHERE source_document_id = ? ORDER BY ordinal`, documentID)
+	rows, err := s.catalog.db.QueryContext(ctx, `SELECT link_text, target_path, COALESCE(target_document_id, ''), resolved FROM knowledge_okf_links WHERE source_document_id = ? ORDER BY ordinal LIMIT ?`, documentID, maxOutgoingLinkRead)
 	if err != nil {
 		return Metadata{}, nil, err
 	}
