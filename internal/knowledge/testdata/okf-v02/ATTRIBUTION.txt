@@ -1,6 +1,6 @@
 Skillet OKF ingestion fixture provenance
 
-Upstream project:
+Real-bundle shape/template source:
   https://github.com/aws-samples/sample-okf-llm-wiki
 Pinned revision:
   f3465f04a84715781b6bfbdd65278a4261f2a519
@@ -10,8 +10,13 @@ Adapted from:
 Upstream license:
   MIT No Attribution (see upstream LICENSE at the pinned revision)
 
-The fixture adapts the upstream project's documented real-bundle shapes: Markdown concepts, YAML frontmatter with required `type`, display metadata, timestamps/provenance, nested concept paths, an `index.md`, and ordinary Markdown links between concepts. Business content, identifiers, and source URLs were rewritten as deterministic repository-owned test data so the E2E is offline and contains no AWS/customer data.
+Canonical OKF v0.2 specification source:
+  https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md
+Pinned revision:
+  ad30107c31c06aec8a7d5636e0d1058118604e6f
 
-Skillet-specific additions exercise #35 acceptance cases that the upstream templates do not themselves provide as a ready-made bundle: source/verification/freshness metadata, one deliberately broken link, an unknown producer metadata key, and a deprecated concept used to prove delete reconciliation.
+The AWS sample's pinned condensed reference describes OKF v0.1. This fixture adapts that project's documented real-bundle shapes: Markdown concepts, YAML frontmatter with required `type`, display metadata, nested concept paths, reserved `index.md`, and ordinary Markdown links between concepts. Business content, identifiers, and source URLs were rewritten as deterministic repository-owned test data so the E2E is offline and contains no AWS/customer data.
+
+The fixture then applies the canonical OKF v0.2 specification for the provenance/trust/lifecycle additions exercised by #35: `sources`, `usage_window`, `generated`, `verified`, `status`, and `stale_after`. It also includes one deliberately broken link, an unknown producer metadata key, and a deprecated concept used to prove delete reconciliation.
 
 No upstream runtime, AWS service, or network access is required by the tests.
