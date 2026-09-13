@@ -24,7 +24,7 @@ owner_team: retention-platform
 
 # Purpose
 
-Use the [renewals policy](/policies/renewals.md) when handling renewal objections.
+This retention coaching overview links to the [renewals policy](/policies/renewals.md) used when handling renewal objections.
 The [glossary](./glossary.md) explains internal acronyms.
 A deliberately [missing page](/missing.md) proves broken links remain unresolved data.
 
