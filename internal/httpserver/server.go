@@ -415,6 +415,10 @@ func (s *Server) resolveTool(ctx context.Context, _ *mcp.CallToolRequest, input 
 		}
 		return nil, resolveSkillOutput{}, err
 	}
+	if err := s.validateCapabilityNewSelection(info.RevisionID); err != nil {
+		s.recordAudit(ctx, organizationID, "version_resolution_failed", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "requested_version": input.Version, "requested_range": input.Range, "error": err.Error()})
+		return nil, resolveSkillOutput{}, err
+	}
 	queryID := fmt.Sprintf("version_%x", sha256.Sum256([]byte(input.SkillID+"\x00"+info.Version+"\x00"+time.Now().UTC().Format(time.RFC3339Nano))))
 	token, err := s.signer.Sign(candidate.Payload{Version: 1, OrganizationID: organizationID, RevisionID: info.RevisionID, QueryID: queryID, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(30 * time.Minute).Unix()})
 	if err != nil {
@@ -702,6 +706,12 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		}
 		s.recordAudit(ctx, organizationID, "version_resolved", map[string]any{"skill_id": info.SkillID, "version": info.Version, "revision_id": info.RevisionID, "requested_version": input.Version, "requested_range": input.Range})
 	}
+	if !lockedRestore {
+		if err := s.validateCapabilityNewSelection(info.RevisionID); err != nil {
+			s.recordAudit(ctx, organizationID, "materialisation_denied", map[string]any{"skill_id": info.SkillID, "revision_id": info.RevisionID, "error": err.Error()})
+			return nil, materializeOutput{}, err
+		}
+	}
 	if s.packages == nil || digest == "" {
 		return nil, materializeOutput{}, fmt.Errorf("package is unavailable")
 	}
@@ -845,7 +855,7 @@ func authMiddleware(next http.Handler, auth AuthConfig) http.Handler {
 			}
 			if auth.Audit != nil {
 					_ = auth.Audit(r.Context(), auth.OrganizationID, "authentication_authorization_failure", map[string]any{"operation": "mcp", "reason": "unsupported_mode"})
-				}
+			}
 			http.Error(w, "authentication mode is not implemented in this slice", http.StatusNotImplemented)
 			return
 		}
@@ -858,9 +868,9 @@ func authMiddleware(next http.Handler, auth AuthConfig) http.Handler {
 			if auth.Audit != nil {
 					_ = auth.Audit(r.Context(), auth.OrganizationID, "authentication_authorization_failure", map[string]any{"operation": "mcp", "reason": "token"})
 				}
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), organizationContextKey{}, auth.OrganizationID)))
 	})
 }
