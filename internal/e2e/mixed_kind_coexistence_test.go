@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -44,7 +43,10 @@ func TestOfflineSkillPlaybookAndToolCoexistInLiveCapabilityIndex(t *testing.T) {
 			Identity: capability.Identity{ID: docs[2].SkillID, Kind: capability.KindTool}, Name: docs[2].Name, Description: docs[2].Description,
 			Scope: scope, Source: capability.Source{RepositoryID: docs[2].RepositoryID}, Provenance: capability.Provenance{RevisionID: docs[2].ID}, Status: capability.StatusActive,
 		}, Tool: &capability.ToolDetail{
-			ServerID: "github", Name: "issue_triage", InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+			ServerID: "github", Name: "issue_triage", InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{"query": map[string]any{"type": "string"}},
+			},
 			InputSchemaSummary: "type=object; properties=query", InputSchemaSHA256: "fixture", UntrustedMetadata: true,
 		}},
 	}); err != nil {

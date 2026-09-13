@@ -5,7 +5,6 @@
 package capability
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
@@ -140,18 +139,18 @@ type PackageDigests struct {
 // is untrusted MCP metadata and is never interpreted as a Skillet instruction
 // or executable operation.
 type ToolDetail struct {
-	ServerID           string          `json:"server_id"`
-	ServerTitle        string          `json:"server_title,omitempty"`
-	Name               string          `json:"name"`
-	Title              string          `json:"title,omitempty"`
-	InputSchema         json.RawMessage `json:"input_schema"`
-	InputSchemaSummary string          `json:"input_schema_summary"`
-	InputSchemaSHA256  string          `json:"input_schema_sha256"`
-	Compatibility      string          `json:"compatibility,omitempty"`
-	Auth               string          `json:"auth,omitempty"`
-	Source             string          `json:"source,omitempty"`
-	UntrustedMetadata  bool            `json:"untrusted_metadata"`
-	ExecutionSupported bool            `json:"execution_supported"`
+	ServerID           string         `json:"server_id"`
+	ServerTitle        string         `json:"server_title,omitempty"`
+	Name               string         `json:"name"`
+	Title              string         `json:"title,omitempty"`
+	InputSchema         map[string]any `json:"input_schema"`
+	InputSchemaSummary string         `json:"input_schema_summary"`
+	InputSchemaSHA256  string         `json:"input_schema_sha256"`
+	Compatibility      string         `json:"compatibility,omitempty"`
+	Auth               string         `json:"auth,omitempty"`
+	Source             string         `json:"source,omitempty"`
+	UntrustedMetadata  bool           `json:"untrusted_metadata"`
+	ExecutionSupported bool           `json:"execution_supported"`
 }
 
 type Detail struct {

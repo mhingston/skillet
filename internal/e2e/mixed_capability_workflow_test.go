@@ -141,7 +141,14 @@ func TestOfflineMixedCapabilityDiscoveryProgressiveToolDisclosureAndNoExecution(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if toolDetail.Detail.Tool == nil || !json.Valid(toolDetail.Detail.Tool.InputSchema) || !strings.Contains(string(toolDetail.Detail.Tool.InputSchema), `"properties"`) {
+	if toolDetail.Detail.Tool == nil {
+		t.Fatalf("describe_capability did not return tool detail: %+v", toolDetail)
+	}
+	schemaJSON, err := json.Marshal(toolDetail.Detail.Tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toolDetail.Detail.Tool.InputSchema["type"] != "object" || !strings.Contains(string(schemaJSON), `"properties"`) {
 		t.Fatalf("describe_capability did not progressively disclose tool schema: %+v", toolDetail)
 	}
 	if toolDetail.Detail.Tool.ExecutionSupported || !toolDetail.Detail.Tool.UntrustedMetadata || toolDetail.MaterializeCandidateID != "" || toolDetail.Detail.MaterializeWith != "" {

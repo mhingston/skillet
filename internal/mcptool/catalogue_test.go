@@ -42,9 +42,12 @@ func TestParseProducesMetadataOnlyRoutingDocumentsAndProgressiveToolDetail(t *te
 	if !strings.Contains(detail.Tool.InputSchemaSummary, "properties=query,repository") || !strings.HasPrefix(detail.Tool.InputSchemaSHA256, "sha256:") {
 		t.Fatalf("schema metadata = %+v", detail.Tool)
 	}
-	var schema map[string]any
-	if err := json.Unmarshal(detail.Tool.InputSchema, &schema); err != nil {
-		t.Fatalf("full schema not preserved: %v", err)
+	if got := detail.Tool.InputSchema["type"]; got != "object" {
+		t.Fatalf("full schema type = %v, want object", got)
+	}
+	properties, ok := detail.Tool.InputSchema["properties"].(map[string]any)
+	if !ok || properties["query"] == nil || properties["repository"] == nil {
+		t.Fatalf("full schema properties not preserved: %#v", detail.Tool.InputSchema)
 	}
 }
 
@@ -125,7 +128,15 @@ func TestStableIdentityAndRevisionAreDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Details[0].Descriptor.Identity != second.Details[0].Descriptor.Identity || first.Documents[0].ID != second.Documents[0].ID || !bytes.Equal(first.Details[0].Tool.InputSchema, second.Details[0].Tool.InputSchema) {
+	firstSchema, err := json.Marshal(first.Details[0].Tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSchema, err := json.Marshal(second.Details[0].Tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Details[0].Descriptor.Identity != second.Details[0].Descriptor.Identity || first.Documents[0].ID != second.Documents[0].ID || !bytes.Equal(firstSchema, secondSchema) {
 		t.Fatal("deterministic snapshot produced unstable identity/revision/schema")
 	}
 }

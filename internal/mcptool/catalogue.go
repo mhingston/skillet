@@ -176,7 +176,7 @@ func Parse(raw []byte, options Options) (Set, error) {
 		}
 		seen[stableID] = struct{}{}
 
-		canonicalSchema, summary, schemaDigest, err := normalizeSchema(tool.InputSchema)
+		normalizedSchema, summary, schemaDigest, err := normalizeSchema(tool.InputSchema)
 		if err != nil {
 			return Set{}, fmt.Errorf("tools[%d] %q input schema: %w", index, tool.Name, err)
 		}
@@ -244,7 +244,7 @@ func Parse(raw []byte, options Options) (Set, error) {
 				ServerTitle:        snapshot.Server.Title,
 				Name:               tool.Name,
 				Title:              tool.Title,
-				InputSchema:         append(json.RawMessage(nil), canonicalSchema...),
+				InputSchema:         cloneJSONMap(normalizedSchema),
 				InputSchemaSummary: summary,
 				InputSchemaSHA256:  schemaDigest,
 				Compatibility:      compatibility,
@@ -270,7 +270,7 @@ func Parse(raw []byte, options Options) (Set, error) {
 	return set, nil
 }
 
-func normalizeSchema(raw json.RawMessage) (json.RawMessage, string, string, error) {
+func normalizeSchema(raw json.RawMessage) (map[string]any, string, string, error) {
 	if len(raw) == 0 {
 		return nil, "", "", fmt.Errorf("schema is required")
 	}
@@ -300,7 +300,7 @@ func normalizeSchema(raw json.RawMessage) (json.RawMessage, string, string, erro
 	}
 	digest := sha256.Sum256(canonical)
 	digestText := "sha256:" + hex.EncodeToString(digest[:])
-	return canonical, schemaSummary(object), digestText, nil
+	return object, schemaSummary(object), digestText, nil
 }
 
 func schemaSummary(schema map[string]any) string {
@@ -381,9 +381,35 @@ func cloneSet(input Set) Set {
 		}
 		if tool := out.Details[index].Tool; tool != nil {
 			copyTool := *tool
-			copyTool.InputSchema = append(json.RawMessage(nil), tool.InputSchema...)
+			copyTool.InputSchema = cloneJSONMap(tool.InputSchema)
 			out.Details[index].Tool = &copyTool
 		}
 	}
 	return out
+}
+
+func cloneJSONMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = cloneJSONValue(value)
+	}
+	return out
+}
+
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = cloneJSONValue(item)
+		}
+		return out
+	default:
+		return typed
+	}
 }

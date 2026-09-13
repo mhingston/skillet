@@ -65,13 +65,13 @@ type Suite struct {
 }
 
 type Metrics struct {
-	Top1                        float64                       `json:"top1"`
-	RecallAt3                   float64                       `json:"recall_at_3"`
-	MultiRecallAt5              float64                       `json:"multi_recall_at_5"`
-	NegativeFalseActivationRate float64                       `json:"negative_false_activation_rate"`
-	ScopeLeakage                float64                       `json:"scope_leakage"`
-	RecallByKind                map[string]float64            `json:"recall_by_kind"`
-	KindConfusion               map[string]map[string]int     `json:"kind_confusion"`
+	Top1                        float64                   `json:"top1"`
+	RecallAt3                   float64                   `json:"recall_at_3"`
+	MultiRecallAt5              float64                   `json:"multi_recall_at_5"`
+	NegativeFalseActivationRate float64                   `json:"negative_false_activation_rate"`
+	ScopeLeakage                float64                   `json:"scope_leakage"`
+	RecallByKind                map[string]float64        `json:"recall_by_kind"`
+	KindConfusion               map[string]map[string]int `json:"kind_confusion"`
 }
 
 type CaseResult struct {
@@ -230,18 +230,18 @@ func Evaluate(s Suite) (Report, error) {
 		}
 		if kind != capability.KindSkill {
 			detail := capability.Detail{Descriptor: capability.Descriptor{
-				Identity:   capability.Identity{ID: doc.SkillID, Kind: kind},
-				Name:       doc.Name,
+				Identity:    capability.Identity{ID: doc.SkillID, Kind: kind},
+				Name:        doc.Name,
 				Description: doc.Description,
-				Scope:      docScope,
-				Source:     capability.Source{RepositoryID: doc.SourceRepository},
-				Provenance: capability.Provenance{RevisionID: doc.RevisionID},
-				TrustLevel: "approved",
-				Status:     capability.StatusActive,
+				Scope:       docScope,
+				Source:      capability.Source{RepositoryID: doc.SourceRepository},
+				Provenance:  capability.Provenance{RevisionID: doc.RevisionID},
+				TrustLevel:  "approved",
+				Status:      capability.StatusActive,
 			}}
 			if kind == capability.KindTool {
 				detail.Tool = &capability.ToolDetail{
-					Name: doc.Name, InputSchema: json.RawMessage(`{"type":"object"}`),
+					Name: doc.Name, InputSchema: map[string]any{"type": "object"},
 					InputSchemaSummary: "type=object", InputSchemaSHA256: "eval", UntrustedMetadata: true,
 				}
 			}
