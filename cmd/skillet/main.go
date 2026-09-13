@@ -304,7 +304,7 @@ func main() {
 									_ = capabilityIndex.Rebuild(capabilityRoutingDocuments(refreshed, toolCapabilities.Documents))
 									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
 								} else {
-									_ = index.Rebuild(refreshed)
+									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
 								}
 								app.Metrics().ActiveSkills.Store(uint64(len(refreshed)))
 							}
