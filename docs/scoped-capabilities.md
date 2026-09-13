@@ -78,7 +78,7 @@ metadata:
   skillet.governance.owner: "payments-platform"
   skillet.governance.maintainers: "alice,bob"
   skillet.governance.reason: "superseded by the v2 release procedure"
-  skillet.replaced_by: "acme/shared-skills/release-v2/SKILL.md"
+  skillet.replaced_by: "acme/shared-skills/release-v2"
 ```
 
 Because M1 governance is stored with source metadata rather than as a separately mutable governance database, Git history and the immutable admitted revision provide the state-change evidence. If governance is later persisted independently, state changes must gain append-only audit evidence rather than mutating historical records in place.
