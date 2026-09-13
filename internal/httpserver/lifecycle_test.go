@@ -35,8 +35,9 @@ func TestLifecycleToolRecordsObservedEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{catalogue: catalog, organizationID: "demo", metrics: &Metrics{}}
+	lifecycle := lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, QueryID: "query-1", MaterializationID: "materialize-1"}
 	_, out, err := s.lifecycleTool(ctx, nil, lifecycleInput{
-		Lifecycle:     lifecycleReference{RevisionID: rev.ID, SkillID: rev.SkillID, Commit: "commit1", Tree: "tree1", ArchiveSHA256: tarDigest, QueryID: "query-1", MaterializationID: "materialize-1"},
+		Lifecycle:     lifecycle,
 		Event:         "activated",
 		CorrelationID: "run-1",
 		Source:        "pi",
@@ -46,6 +47,12 @@ func TestLifecycleToolRecordsObservedEvent(t *testing.T) {
 	}
 	if out.Status != "recorded" || out.RevisionID != rev.ID || out.Event != "activated" {
 		t.Fatalf("out = %+v", out)
+	}
+
+	mismatched := lifecycle
+	mismatched.ArchiveSHA256 = tarDigest + "-mismatch"
+	if _, _, err := s.lifecycleTool(ctx, nil, lifecycleInput{Lifecycle: mismatched, Event: "completed"}); err == nil {
+		t.Fatal("mismatched lifecycle provenance was accepted")
 	}
 }
 
