@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/mhingston/skillet/internal/capabilityeval"
 	"github.com/mhingston/skillet/internal/eval"
 	"github.com/mhingston/skillet/internal/knowledgeeval"
 )
@@ -32,18 +33,20 @@ type metricResult struct {
 }
 
 type verificationReport struct {
-	SchemaVersion       int            `json:"schema_version"`
-	Suite               string         `json:"suite"`
-	Passed              bool           `json:"passed"`
-	Steps               []stepResult   `json:"steps"`
-	Metrics             []metricResult `json:"metrics,omitempty"`
-	EvalReport          string         `json:"eval_report"`
-	KnowledgeEvalReport string         `json:"knowledge_eval_report,omitempty"`
+	SchemaVersion        int            `json:"schema_version"`
+	Suite                string         `json:"suite"`
+	Passed               bool           `json:"passed"`
+	Steps                []stepResult   `json:"steps"`
+	Metrics              []metricResult `json:"metrics,omitempty"`
+	EvalReport           string         `json:"eval_report"`
+	CapabilityEvalReport string         `json:"capability_eval_report,omitempty"`
+	KnowledgeEvalReport  string         `json:"knowledge_eval_report,omitempty"`
 }
 
 func main() {
 	fixturePath := flag.String("fixtures", "evals/retrieval.yaml", "retrieval fixture YAML path")
 	baselinePath := flag.String("baseline", "evals/baselines/retrieval-v1.json", "protected retrieval baseline JSON path")
+	capabilityFixturePath := flag.String("capability-fixtures", "evals/capabilities.yaml", "scoped capability retrieval fixture YAML path")
 	knowledgeFixturePath := flag.String("knowledge-fixtures", "evals/knowledge.yaml", "knowledge retrieval fixture YAML path")
 	knowledgeBaselinePath := flag.String("knowledge-baseline", "evals/baselines/knowledge-v1.json", "protected knowledge retrieval baseline JSON path")
 	reportDir := flag.String("report-dir", "artifacts/verification", "directory for machine-readable verification reports")
@@ -53,6 +56,7 @@ func main() {
 		fatal(fmt.Errorf("create report directory: %w", err))
 	}
 	rawEvalPath := filepath.Join(*reportDir, "retrieval.json")
+	capabilityEvalPath := filepath.Join(*reportDir, "capability-retrieval.json")
 	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
 
@@ -64,14 +68,16 @@ func main() {
 		{name: "go-vet", args: []string{"go", "vet", "./..."}},
 		{name: "go-test-race", args: []string{"go", "test", "-race", "./..."}},
 		{name: "offline-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineLocalAdmissionSearchAndMaterialize$", "-count=1"}},
+		{name: "offline-scoped-capability-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineScopedCapabilityDiscoveryAndMaterialization$", "-count=1"}},
 		{name: "offline-knowledge-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineKnowledgeIndexSearchReadAndReindex$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
+		{name: "capability-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-capability-eval", "--fixtures", *capabilityFixturePath, "--report", capabilityEvalPath}},
 		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--baseline", *knowledgeBaselinePath, "--report", knowledgeEvalPath}},
 	}
 
 	report := verificationReport{
 		SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true,
-		EvalReport: filepath.ToSlash(rawEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
+		EvalReport: filepath.ToSlash(rawEvalPath), CapabilityEvalReport: filepath.ToSlash(capabilityEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
 	}
 	for _, command := range commands {
 		passed := run(command.args)
@@ -87,6 +93,14 @@ func main() {
 		report.Passed = false
 	} else {
 		appendMetrics(&report, routingMetrics)
+	}
+
+	capabilityMetrics, err := loadCapabilityMetricResults(*capabilityFixturePath, capabilityEvalPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "skillet-verify: capability metric report:", err)
+		report.Passed = false
+	} else {
+		appendMetrics(&report, capabilityMetrics)
 	}
 
 	knowledgeMetrics, err := loadKnowledgeMetricResults(*knowledgeFixturePath, *knowledgeBaselinePath, knowledgeEvalPath)
@@ -151,6 +165,24 @@ func loadMetricResults(fixturePath, baselinePath, reportPath string) ([]metricRe
 	}, nil
 }
 
+func loadCapabilityMetricResults(fixturePath, reportPath string) ([]metricResult, error) {
+	suite, err := capabilityeval.Load(fixturePath)
+	if err != nil {
+		return nil, err
+	}
+	observed, err := loadCapabilityEvalReport(reportPath)
+	if err != nil {
+		return nil, err
+	}
+	return []metricResult{
+		thresholdMetric("capability_top1", suite.Name, suite.Version, observed.Metrics.Top1, suite.Thresholds.Top1, ">="),
+		thresholdMetric("capability_recall_at3", suite.Name, suite.Version, observed.Metrics.RecallAt3, suite.Thresholds.RecallAt3, ">="),
+		thresholdMetric("capability_multi_recall_at5", suite.Name, suite.Version, observed.Metrics.MultiRecallAt5, suite.Thresholds.MultiRecallAt5, ">="),
+		thresholdMetric("capability_negative_false_activation_rate", suite.Name, suite.Version, observed.Metrics.NegativeFalseActivationRate, suite.Thresholds.NegativeFalseActivationRate, "<="),
+		thresholdMetric("capability_scope_leakage", suite.Name, suite.Version, observed.Metrics.ScopeLeakage, suite.Thresholds.ScopeLeakage, "<="),
+	}, nil
+}
+
 func loadKnowledgeMetricResults(fixturePath, baselinePath, reportPath string) ([]metricResult, error) {
 	suite, err := knowledgeeval.Load(fixturePath)
 	if err != nil {
@@ -171,6 +203,17 @@ func loadKnowledgeMetricResults(fixturePath, baselinePath, reportPath string) ([
 		metric("knowledge_mrr", suite.Name, suite.Version, observed.Metrics.MRR, suite.Thresholds.MRR, ">=", baseline.Metrics.MRR, maxRegression),
 		metric("knowledge_negative_precision", suite.Name, suite.Version, observed.Metrics.NegativePrecision, suite.Thresholds.NegativePrecision, ">=", baseline.Metrics.NegativePrecision, maxRegression),
 	}, nil
+}
+
+func thresholdMetric(name, fixture string, fixtureVersion int, observed, threshold float64, comparison string) metricResult {
+	passed := observed >= threshold
+	if comparison == "<=" {
+		passed = observed <= threshold
+	}
+	return metricResult{
+		Name: name, Fixture: fixture, FixtureVersion: fixtureVersion,
+		ObservedValue: observed, RequiredThreshold: threshold, Comparison: comparison, Passed: passed,
+	}
 }
 
 func metric(name, fixture string, fixtureVersion int, observed, threshold float64, comparison string, baseline, maxRegression float64) metricResult {
@@ -201,6 +244,18 @@ func loadEvalReport(path string) (eval.Report, error) {
 	var report eval.Report
 	if err := json.Unmarshal(contents, &report); err != nil {
 		return eval.Report{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return report, nil
+}
+
+func loadCapabilityEvalReport(path string) (capabilityeval.Report, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return capabilityeval.Report{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	var report capabilityeval.Report
+	if err := json.Unmarshal(contents, &report); err != nil {
+		return capabilityeval.Report{}, fmt.Errorf("decode %s: %w", path, err)
 	}
 	return report, nil
 }
