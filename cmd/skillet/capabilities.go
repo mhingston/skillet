@@ -24,6 +24,15 @@ func configuredCapabilityService(index *search.Index, c config.Config) (*capabil
 	return capability.New(index, policies)
 }
 
+func hasScopedCapabilitySources(repositories []config.Repository) bool {
+	for _, repository := range repositories {
+		if repository.CapabilityScope.Namespace != "" || repository.CapabilityScope.Repository != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // legacyRoutingDocuments returns only organisation-wide sources. Repository or
 // namespace-scoped capabilities are deliberately absent from the v1
 // search_skills index, which has no scope input and therefore cannot safely
