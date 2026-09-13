@@ -1,0 +1,98 @@
+version: 1
+name: scoped-capability-routing-v1
+documents:
+  - revision_id: rev-central-release
+    skill_id: demo/central/release
+    source_repository: central
+    name: release-coordinator
+    description: coordinate shared production release checklist
+  - revision_id: rev-central-security
+    skill_id: demo/central/security
+    source_repository: central
+    name: security-review
+    description: review authentication authorization threat model
+  - revision_id: rev-a-release
+    skill_id: demo/local-a/release
+    source_repository: local-a
+    scope:
+      namespace: team
+      repository: repo-a
+    name: release-coordinator
+    description: repository A canary deployment database migration release
+  - revision_id: rev-a-docs
+    skill_id: demo/local-a/docs
+    source_repository: local-a
+    scope:
+      namespace: team
+      repository: repo-a
+    name: docs-maintenance
+    description: repository A readme wording documentation cleanup
+  - revision_id: rev-b-release
+    skill_id: demo/local-b/release
+    source_repository: local-b
+    scope:
+      namespace: team
+      repository: repo-b
+    name: release-coordinator
+    description: repository B blue green deployment queue migration release
+cases:
+  - id: central-expected
+    type: single
+    query: shared production release checklist
+    relevant_ids: [rev-central-release]
+    scope: {}
+    forbidden_ids: [rev-a-release, rev-a-docs, rev-b-release]
+  - id: local-a-expected
+    type: single
+    query: repository A canary deployment database migration
+    relevant_ids: [rev-a-release]
+    scope:
+      namespace: team
+      repository: repo-a
+    forbidden_ids: [rev-b-release]
+  - id: local-b-expected
+    type: single
+    query: repository B blue green deployment queue migration
+    relevant_ids: [rev-b-release]
+    scope:
+      namespace: team
+      repository: repo-b
+    forbidden_ids: [rev-a-release, rev-a-docs]
+  - id: similar-name-local-scope
+    type: single
+    query: repository A canary deployment
+    relevant_ids: [rev-a-release]
+    scope:
+      namespace: team
+      repository: repo-a
+    forbidden_ids: [rev-b-release]
+  - id: irrelevant-local-must-not-win
+    type: single
+    query: authentication authorization threat model
+    relevant_ids: [rev-central-security]
+    scope:
+      namespace: team
+      repository: repo-a
+    forbidden_ids: [rev-b-release]
+  - id: no-capability-needed
+    type: negative
+    query: zyzzyva quokka xylophone
+    relevant_ids: []
+    scope:
+      namespace: team
+      repository: repo-a
+    forbidden_ids: [rev-b-release]
+  - id: central-plus-local
+    type: multi
+    query: authentication review and repository A canary deployment
+    relevant_ids: [rev-central-security, rev-a-release]
+    scope:
+      namespace: team
+      repository: repo-a
+    forbidden_ids: [rev-b-release]
+thresholds:
+  top1: 1.0
+  recall_at_3: 1.0
+  multi_recall_at_5: 1.0
+  negative_false_activation_rate: 0.0
+  scope_leakage: 0.0
