@@ -69,24 +69,27 @@ func TestOfflineCapabilityGovernanceAndExactYankedRestore(t *testing.T) {
 	if err := index.Rebuild(docs); err != nil {
 		t.Fatal(err)
 	}
+	scope := mustCapabilityScope(t, "demo", "", "")
 	service, err := capability.New(index, []capability.SourcePolicy{{
 		RepositoryID: "central",
-		Scope:        mustCapabilityScope(t, "demo", "", ""),
+		Scope:        scope,
 		Owner:        "platform-team",
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	results, _, err := service.Search("release workflow", 50, 50, 10, 60, mustCapabilityScope(t, "demo", "", ""), search.Filters{})
+	results, _, err := service.Search("release workflow", 50, 50, 10, 60, scope, search.Filters{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	seenOld, seenNew, seenYanked := false, false, false
+	var oldRevision, newRevision string
 	for _, candidate := range results {
 		switch candidate.Capability.Identity.ID {
 		case "demo/central/old":
 			seenOld = true
+			oldRevision = candidate.Capability.Provenance.RevisionID
 			if candidate.Capability.Status != capability.StatusDeprecated || candidate.Capability.Governance.ReplacedBy != "demo/central/new" || !candidate.Capability.Governance.ReplacementResolved {
 				t.Fatalf("deprecated candidate = %+v", candidate.Capability)
 			}
@@ -95,12 +98,38 @@ func TestOfflineCapabilityGovernanceAndExactYankedRestore(t *testing.T) {
 			}
 		case "demo/central/new":
 			seenNew = true
+			newRevision = candidate.Capability.Provenance.RevisionID
 		case "demo/central/yanked":
 			seenYanked = true
 		}
 	}
 	if !seenOld || !seenNew || seenYanked {
 		t.Fatalf("governed discovery old=%t new=%t yanked=%t results=%+v", seenOld, seenNew, seenYanked, results)
+	}
+	if err := service.AllowsNewSelection(oldRevision); err != nil {
+		t.Fatalf("deprecated revision should remain explicitly selectable: %v", err)
+	}
+	if err := service.AllowsNewSelection(newRevision); err != nil {
+		t.Fatalf("active revision should be selectable: %v", err)
+	}
+
+	// Ownership is presentation/control metadata. Re-projecting the same routing
+	// documents under another owner must not change semantic order or scores.
+	otherOwner, err := capability.New(index, []capability.SourcePolicy{{RepositoryID: "central", Scope: scope, Owner: "another-team"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherResults, _, err := otherOwner.Search("release workflow", 50, 50, 10, 60, scope, search.Filters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != len(otherResults) {
+		t.Fatalf("ownership changed result count: %d vs %d", len(results), len(otherResults))
+	}
+	for i := range results {
+		if results[i].Capability.Provenance.RevisionID != otherResults[i].Capability.Provenance.RevisionID || results[i].Ranking.Rank != otherResults[i].Ranking.Rank || results[i].Ranking.Score != otherResults[i].Ranking.Score {
+			t.Fatalf("ownership changed routing at %d: %+v vs %+v", i, results[i], otherResults[i])
+		}
 	}
 
 	var yankedDoc search.Document
@@ -112,6 +141,9 @@ func TestOfflineCapabilityGovernanceAndExactYankedRestore(t *testing.T) {
 	}
 	if yankedDoc.ID == "" {
 		t.Fatal("yanked immutable revision missing from catalogue routing snapshot")
+	}
+	if err := service.AllowsNewSelection(yankedDoc.ID); err == nil {
+		t.Fatal("yanked revision unexpectedly allowed for new selection")
 	}
 	info, err := catalog.Revision(ctx, "demo", yankedDoc.ID)
 	if err != nil {
@@ -139,7 +171,7 @@ func TestOfflineCapabilityGovernanceAndExactYankedRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(restored) != 1 || restored[0].Revision.RevisionID != yankedDoc.ID || restored[0].Digest != info.ArchiveSHA256TarGZ {
+	if len(restored) != 1 || restored[0].Revision.RevisionID != yankedDoc.ID || restored[0].Digest != info.ArchiveSHA256TarGZ || restored[0].Revision.Commit != info.Commit || restored[0].Revision.Tree != info.Tree {
 		t.Fatalf("exact yanked restore = %+v", restored)
 	}
 }
