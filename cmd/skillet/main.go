@@ -21,6 +21,7 @@ import (
 	"github.com/mhingston/skillet/internal/gitstore"
 	"github.com/mhingston/skillet/internal/httpserver"
 	"github.com/mhingston/skillet/internal/ingest"
+	"github.com/mhingston/skillet/internal/knowledge"
 	"github.com/mhingston/skillet/internal/packagebuilder"
 	"github.com/mhingston/skillet/internal/packagestore"
 	"github.com/mhingston/skillet/internal/packageurl"
@@ -95,6 +96,18 @@ func main() {
 		slog.Error("index document failed", "error", err)
 		os.Exit(2)
 	}
+	knowledgeService, err := knowledge.Open(ctx, filepath.Join(c.Server.DataDir, "knowledge"), knowledge.Options{
+		Embedder:     embedder,
+		LexicalDepth: c.Search.LexicalDepth,
+		VectorDepth:  c.Search.VectorDepth,
+		RRFK:         c.Search.RRFK,
+		RerankLimit:  c.Search.RerankDepth,
+	})
+	if err != nil {
+		slog.Error("knowledge catalogue failed", "error", err)
+		os.Exit(2)
+	}
+	defer knowledgeService.Close()
 	shutdownTimeout, _ := time.ParseDuration(c.Server.ShutdownTimeout)
 	if shutdownTimeout <= 0 {
 		shutdownTimeout = 20 * time.Second
@@ -140,6 +153,7 @@ func main() {
 	} else {
 		app = httpserver.NewWithSearch(slog.Default(), ready, index, c.Organization.ID, candidate.Signer{Key: []byte(candidateKey)})
 	}
+	app.ConfigureKnowledge(knowledgeService)
 	if packageURLTTL, parseErr := time.ParseDuration(c.Packages.SignedURLTTL); parseErr == nil {
 		app.ConfigurePackageURLTTL(packageURLTTL)
 	}
