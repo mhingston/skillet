@@ -1,3 +1,17 @@
-Synthetic organisational-knowledge fixture for Skillet's OKF ingestion tests.
+Skillet OKF ingestion fixture provenance
 
-The shape follows the public Open Knowledge Format v0.2 convention (Markdown concepts with YAML frontmatter and ordinary Markdown links), but the content and metadata here are original test data created for this repository. No external sample implementation or service is required.
+Upstream project:
+  https://github.com/aws-samples/sample-okf-llm-wiki
+Pinned revision:
+  f3465f04a84715781b6bfbdd65278a4261f2a519
+Adapted from:
+  services/harvest/skills/okf-authoring/references/templates.md
+  services/harvest/skills/okf-authoring/references/spec-condensed.md
+Upstream license:
+  MIT No Attribution (see upstream LICENSE at the pinned revision)
+
+The fixture adapts the upstream project's documented real-bundle shapes: Markdown concepts, YAML frontmatter with required `type`, display metadata, timestamps/provenance, nested concept paths, an `index.md`, and ordinary Markdown links between concepts. Business content, identifiers, and source URLs were rewritten as deterministic repository-owned test data so the E2E is offline and contains no AWS/customer data.
+
+Skillet-specific additions exercise #35 acceptance cases that the upstream templates do not themselves provide as a ready-made bundle: source/verification/freshness metadata, one deliberately broken link, an unknown producer metadata key, and a deprecated concept used to prove delete reconciliation.
+
+No upstream runtime, AWS service, or network access is required by the tests.
