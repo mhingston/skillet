@@ -14,26 +14,48 @@ func (a Auth) validateClaimMapping() error {
 	if a.Mode != "oidc" {
 		return errors.New("auth claim mappings are only valid in oidc mode")
 	}
-	if a.ScopeClaim != "" {
-		if err := validateMappedClaimName("auth.scope_claim", a.ScopeClaim); err != nil {
-			return err
+
+	organizationClaim := a.OrganizationClaim
+	if organizationClaim == "" {
+		organizationClaim = "organization_id"
+	}
+	scopeClaim := a.ScopeClaim
+	if scopeClaim == "" {
+		scopeClaim = "scope"
+	}
+	roleClaim := a.RoleClaim
+	if roleClaim == "" {
+		roleClaim = "roles"
+	}
+
+	if err := validateMappedClaimName("auth.organization_claim", organizationClaim); err != nil {
+		return err
+	}
+	if err := validateMappedClaimName("auth.scope_claim", scopeClaim); err != nil {
+		return err
+	}
+	if err := validateMappedClaimName("auth.role_claim", roleClaim); err != nil {
+		return err
+	}
+
+	seenSources := map[string]string{organizationClaim: "auth.organization_claim"}
+	if previous, ok := seenSources[scopeClaim]; ok {
+		return fmt.Errorf("auth.scope_claim duplicates claim source configured by %s", previous)
+	}
+	seenSources[scopeClaim] = "auth.scope_claim"
+	if scopeClaim == "scope" {
+		// `scp` is the documented fallback source for the default delegated scope
+		// mapping and therefore belongs to the same normalization slot.
+		if previous, ok := seenSources["scp"]; ok {
+			return fmt.Errorf("auth.scope_claim fallback duplicates claim source configured by %s", previous)
 		}
+		seenSources["scp"] = "auth.scope_claim fallback"
 	}
-	if a.RoleClaim != "" {
-		if err := validateMappedClaimName("auth.role_claim", a.RoleClaim); err != nil {
-			return err
-		}
+	if previous, ok := seenSources[roleClaim]; ok {
+		return fmt.Errorf("auth.role_claim duplicates claim source configured by %s", previous)
 	}
-	seenSources := map[string]string{}
-	if a.ScopeClaim != "" {
-		seenSources[a.ScopeClaim] = "auth.scope_claim"
-	}
-	if a.RoleClaim != "" {
-		if previous, ok := seenSources[a.RoleClaim]; ok {
-			return fmt.Errorf("auth.role_claim duplicates claim source configured by %s", previous)
-		}
-		seenSources[a.RoleClaim] = "auth.role_claim"
-	}
+	seenSources[roleClaim] = "auth.role_claim"
+
 	for name, claim := range a.AttributeClaims {
 		if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, " \t\r\n") {
 			return fmt.Errorf("auth.attribute_claims key %q must be a non-empty token", name)
