@@ -76,38 +76,23 @@ func PrepareDocuments(docs []search.Document, policies []SourcePolicy) ([]search
 	return prepared, records, nil
 }
 
-// RegisterGovernance attaches catalogue-control state to immutable routing
-// revisions. The operation validates the complete batch before mutating the
-// service so unresolved/invalid successor guidance cannot partially corrupt
-// catalogue presentation.
+// RegisterGovernance attaches explicit catalogue-control state to immutable
+// routing revisions. This is useful for ingestion adapters that already split
+// control metadata from semantic routing metadata.
 func (s *Service) RegisterGovernance(records []GovernanceRecord) error {
 	next := make(map[string]GovernanceRecord, len(s.governance)+len(records))
 	for key, value := range s.governance {
 		next[key] = value
 	}
 	for _, record := range records {
-		if record.RevisionID == "" || record.IdentityID == "" {
-			return fmt.Errorf("governance record requires revision and stable identity")
-		}
-		if !governance.ValidState(record.Status) {
-			return fmt.Errorf("capability %q has invalid governance state %q", record.IdentityID, record.Status)
-		}
-		doc, ok := s.index.Document(record.RevisionID)
-		if !ok {
-			return fmt.Errorf("governance revision %q is not present in routing index", record.RevisionID)
-		}
-		if doc.SkillID != record.IdentityID {
-			return fmt.Errorf("governance identity %q does not match routing document %q", record.IdentityID, doc.SkillID)
-		}
-		if record.Metadata.ReplacedBy != "" && record.Status != StatusDeprecated {
-			return fmt.Errorf("replacement guidance for %q requires deprecated state", record.IdentityID)
+		if err := s.validateGovernanceRecord(record); err != nil {
+			return err
 		}
 		if _, exists := next[record.RevisionID]; exists {
 			return fmt.Errorf("duplicate governance revision %q", record.RevisionID)
 		}
 		next[record.RevisionID] = record
 	}
-
 	resolved, err := s.validateReplacementGuidance(next)
 	if err != nil {
 		return err
@@ -116,9 +101,79 @@ func (s *Service) RegisterGovernance(records []GovernanceRecord) error {
 	return nil
 }
 
+func (s *Service) validateGovernanceRecord(record GovernanceRecord) error {
+	if record.RevisionID == "" || record.IdentityID == "" {
+		return fmt.Errorf("governance record requires revision and stable identity")
+	}
+	if !governance.ValidState(record.Status) {
+		return fmt.Errorf("capability %q has invalid governance state %q", record.IdentityID, record.Status)
+	}
+	doc, ok := s.index.Document(record.RevisionID)
+	if !ok {
+		return fmt.Errorf("governance revision %q is not present in routing index", record.RevisionID)
+	}
+	if doc.SkillID != record.IdentityID {
+		return fmt.Errorf("governance identity %q does not match routing document %q", record.IdentityID, doc.SkillID)
+	}
+	if record.Metadata.ReplacedBy != "" && record.Status != StatusDeprecated {
+		return fmt.Errorf("replacement guidance for %q requires deprecated state", record.IdentityID)
+	}
+	return nil
+}
+
+// RefreshGovernance projects current publisher control metadata after source
+// refreshes. It is intentionally independent of semantic relevance: reserved
+// control keys are never included in routingText. A yank only removes a
+// revision from new discovery; it does not delete the immutable revision or
+// package used by exact lock restoration.
+func (s *Service) RefreshGovernance() error {
+	next := make(map[string]GovernanceRecord, len(s.governance))
+	for _, doc := range s.index.Documents() {
+		// MCP tool catalogues carry typed status in Detail and are validated by
+		// their ingestion adapter; do not overwrite that state with skill metadata.
+		if _, typed := s.details[doc.ID]; typed {
+			continue
+		}
+		policy := s.policyForDocument(doc)
+		record, hasExisting := s.governance[doc.ID]
+		if hasGovernanceControlMetadata(doc.Metadata) || !hasExisting {
+			state, metadata, err := governance.Parse(doc.Metadata, governance.Defaults{Owner: policy.Owner, Maintainers: policy.Maintainers})
+			if err != nil {
+				return fmt.Errorf("capability %q governance: %w", doc.SkillID, err)
+			}
+			record = GovernanceRecord{RevisionID: doc.ID, IdentityID: doc.SkillID, Status: state, Metadata: metadata}
+		}
+		if err := s.validateGovernanceRecord(record); err != nil {
+			return err
+		}
+		if record.Status == StatusYanked && doc.Searchable {
+			doc.Searchable = false
+			if err := s.index.Add(doc); err != nil {
+				return fmt.Errorf("apply yank to capability %q: %w", doc.SkillID, err)
+			}
+		}
+		next[doc.ID] = record
+	}
+	resolved, err := s.validateReplacementGuidance(next)
+	if err != nil {
+		return err
+	}
+	s.governance = resolved
+	return nil
+}
+
+func hasGovernanceControlMetadata(values map[string]string) bool {
+	for key := range values {
+		if governance.IsControlKey(key) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) validateReplacementGuidance(records map[string]GovernanceRecord) (map[string]GovernanceRecord, error) {
 	byIdentity := map[string]search.Document{}
-	for _, doc := range s.index.List(search.Filters{}) {
+	for _, doc := range s.index.Documents() {
 		if doc.SkillID != "" {
 			byIdentity[doc.SkillID] = doc
 		}
@@ -164,7 +219,7 @@ func replacementScopeAllowed(source, target Scope) bool {
 		return target.Namespace == "" && target.Repository == ""
 	}
 	if source.Repository == "" {
-		return target.Namespace == "" || target.Namespace == source.Namespace && target.Repository == ""
+		return target.Namespace == "" || (target.Namespace == source.Namespace && target.Repository == "")
 	}
 	if target.Namespace == "" {
 		return true
@@ -292,6 +347,9 @@ func (s *Service) List(request Scope, filters search.Filters) ([]search.Document
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
+	if err := s.RefreshGovernance(); err != nil {
+		return nil, err
+	}
 	filters.OrganizationID = request.Organization
 	docs := s.index.List(filters)
 	out := make([]search.Document, 0, len(docs))
@@ -303,15 +361,17 @@ func (s *Service) List(request Scope, filters search.Filters) ([]search.Document
 	return out, nil
 }
 
-// Search applies scope as an eligibility constraint before relevance ranking.
-// Scope therefore cannot boost local candidates, and ineligible repositories
-// cannot perturb RRF/vector ranks or appear in semantic-neighbour evidence.
+// Search applies scope and governance as eligibility constraints before
+// relevance ranking. Neither locality nor governance metadata boosts ranking.
 func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK int, request Scope, filters search.Filters) ([]Candidate, bool, error) {
 	if err := request.Validate(); err != nil {
 		return nil, false, err
 	}
 	if limit < 1 {
 		return nil, false, fmt.Errorf("limit must be positive")
+	}
+	if err := s.RefreshGovernance(); err != nil {
+		return nil, false, err
 	}
 	filters.OrganizationID = request.Organization
 	all := s.index.List(filters)
@@ -332,10 +392,6 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 	}
 	sort.Strings(filters.Repositories)
 
-	// Search the full pre-scope pool before compacting eligible ranks. This
-	// prevents an ineligible high-ranking source from crowding an eligible
-	// candidate out of the retrieval depth while still ensuring its original
-	// rank cannot affect capability RRF scores.
 	candidatePoolCount := len(all)
 	if lexicalDepth < candidatePoolCount {
 		lexicalDepth = candidatePoolCount
@@ -379,6 +435,9 @@ func (s *Service) Describe(revisionID string, request Scope) (Descriptor, error)
 	}
 	if revisionID == "" {
 		return Descriptor{}, fmt.Errorf("revision id is required")
+	}
+	if err := s.RefreshGovernance(); err != nil {
+		return Descriptor{}, err
 	}
 	doc, ok := s.index.Document(revisionID)
 	if !ok || !s.visible(doc, request) {
