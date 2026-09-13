@@ -25,15 +25,21 @@ func TestScopedSearchCentralAndRepositoryLocalVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertIDs(t, a, []string{"rev-a-plan", "rev-central-plan"})
+	if len(a) < 2 || a[0].Capability.Provenance.RevisionID != "rev-a-plan" || a[1].Capability.Provenance.RevisionID != "rev-central-plan" {
+		t.Fatalf("repository A ranking = %+v; expected A-local plan then central plan", a)
+	}
+	assertContains(t, a, "rev-a-k8s")
 	assertNoRevision(t, a, "rev-b-plan")
 
 	b, _, err := service.Search("plan repository B migrations", 50, 50, 10, 60, mustScope(t, "demo", "team", "repo-b"), search.Filters{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertIDs(t, b, []string{"rev-b-plan", "rev-central-plan"})
+	if len(b) < 2 || b[0].Capability.Provenance.RevisionID != "rev-b-plan" || b[1].Capability.Provenance.RevisionID != "rev-central-plan" {
+		t.Fatalf("repository B ranking = %+v; expected B-local plan then central plan", b)
+	}
 	assertNoRevision(t, b, "rev-a-plan")
+	assertNoRevision(t, b, "rev-a-k8s")
 
 	centralOnly, _, err := service.Search("plan implementation work", 50, 50, 10, 60, mustScope(t, "demo", "", ""), search.Filters{})
 	if err != nil {
@@ -42,6 +48,7 @@ func TestScopedSearchCentralAndRepositoryLocalVisibility(t *testing.T) {
 	assertIDs(t, centralOnly, []string{"rev-central-plan"})
 	assertNoRevision(t, centralOnly, "rev-a-plan")
 	assertNoRevision(t, centralOnly, "rev-b-plan")
+	assertNoRevision(t, centralOnly, "rev-a-k8s")
 }
 
 func TestLocalCapabilityDoesNotBeatMoreRelevantCentralCapability(t *testing.T) {
