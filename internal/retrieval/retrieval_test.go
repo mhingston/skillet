@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"math"
 	"reflect"
 	"testing"
 )
@@ -55,7 +56,7 @@ func TestReciprocalRankFusionCountsDuplicateIDOncePerSource(t *testing.T) {
 		t.Fatalf("ranks = %v, want [1 2]", got[0].Ranks)
 	}
 	want := 1.0/61.0 + 1.0/62.0
-	if got[0].Score != want {
+	if math.Abs(got[0].Score-want) > 1e-15 {
 		t.Fatalf("score = %v, want %v", got[0].Score, want)
 	}
 }
