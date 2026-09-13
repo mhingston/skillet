@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/search"
@@ -18,6 +19,7 @@ type Service struct {
 	index             *search.Index
 	policies          map[string]SourcePolicy
 	details           map[string]Detail
+	governanceMu      sync.RWMutex
 	governance        map[string]GovernanceRecord
 	identityRevisions map[string]string
 }
@@ -80,6 +82,9 @@ func PrepareDocuments(docs []search.Document, policies []SourcePolicy) ([]search
 // routing revisions. This is useful for ingestion adapters that already split
 // control metadata from semantic routing metadata.
 func (s *Service) RegisterGovernance(records []GovernanceRecord) error {
+	s.governanceMu.Lock()
+	defer s.governanceMu.Unlock()
+
 	next := make(map[string]GovernanceRecord, len(s.governance)+len(records))
 	for key, value := range s.governance {
 		next[key] = value
@@ -127,6 +132,9 @@ func (s *Service) validateGovernanceRecord(record GovernanceRecord) error {
 // revision from new discovery; it does not delete the immutable revision or
 // package used by exact lock restoration.
 func (s *Service) RefreshGovernance() error {
+	s.governanceMu.Lock()
+	defer s.governanceMu.Unlock()
+
 	next := make(map[string]GovernanceRecord, len(s.governance))
 	for _, doc := range s.index.Documents() {
 		// MCP tool catalogues carry typed status in Detail and are validated by
@@ -318,7 +326,10 @@ func (s *Service) descriptorForDocument(doc search.Document) Descriptor {
 
 	policy := s.policyForDocument(doc)
 	control := governance.Metadata{Owner: policy.Owner, Maintainers: append([]string(nil), policy.Maintainers...)}
-	if record, ok := s.governance[doc.ID]; ok {
+	s.governanceMu.RLock()
+	record, ok := s.governance[doc.ID]
+	s.governanceMu.RUnlock()
+	if ok {
 		descriptor.Status = record.Status
 		control = record.Metadata
 		if control.Owner == "" {
