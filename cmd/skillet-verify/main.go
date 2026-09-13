@@ -31,17 +31,19 @@ type metricResult struct {
 }
 
 type verificationReport struct {
-	SchemaVersion int            `json:"schema_version"`
-	Suite         string         `json:"suite"`
-	Passed        bool           `json:"passed"`
-	Steps         []stepResult   `json:"steps"`
-	Metrics       []metricResult `json:"metrics,omitempty"`
-	EvalReport    string         `json:"eval_report"`
+	SchemaVersion       int            `json:"schema_version"`
+	Suite               string         `json:"suite"`
+	Passed              bool           `json:"passed"`
+	Steps               []stepResult   `json:"steps"`
+	Metrics             []metricResult `json:"metrics,omitempty"`
+	EvalReport          string         `json:"eval_report"`
+	KnowledgeEvalReport string         `json:"knowledge_eval_report,omitempty"`
 }
 
 func main() {
 	fixturePath := flag.String("fixtures", "evals/retrieval.yaml", "retrieval fixture YAML path")
 	baselinePath := flag.String("baseline", "evals/baselines/retrieval-v1.json", "protected retrieval baseline JSON path")
+	knowledgeFixturePath := flag.String("knowledge-fixtures", "evals/knowledge.yaml", "knowledge retrieval fixture YAML path")
 	reportDir := flag.String("report-dir", "artifacts/verification", "directory for machine-readable verification reports")
 	flag.Parse()
 
@@ -49,6 +51,7 @@ func main() {
 		fatal(fmt.Errorf("create report directory: %w", err))
 	}
 	rawEvalPath := filepath.Join(*reportDir, "retrieval.json")
+	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
 
 	commands := []struct {
@@ -59,10 +62,15 @@ func main() {
 		{name: "go-vet", args: []string{"go", "vet", "./..."}},
 		{name: "go-test-race", args: []string{"go", "test", "-race", "./..."}},
 		{name: "offline-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineLocalAdmissionSearchAndMaterialize$", "-count=1"}},
+		{name: "offline-knowledge-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineKnowledgeIndexSearchReadAndReindex$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
+		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--report", knowledgeEvalPath}},
 	}
 
-	report := verificationReport{SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true, EvalReport: filepath.ToSlash(rawEvalPath)}
+	report := verificationReport{
+		SchemaVersion: 1, Suite: "vnext-deterministic", Passed: true,
+		EvalReport: filepath.ToSlash(rawEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
+	}
 	for _, command := range commands {
 		passed := run(command.args)
 		report.Steps = append(report.Steps, stepResult{Name: command.name, Command: joinCommand(command.args), Passed: passed})
