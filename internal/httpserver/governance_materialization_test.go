@@ -68,3 +68,40 @@ func TestMaterializeRejectsYankedNewSelectionButAllowsExactLockedRestore(t *test
 		t.Fatalf("locked restore changed immutable provenance: %+v", restored)
 	}
 }
+
+func TestNewSelectionRevalidatesRetainedRevisionFromCatalogueHistory(t *testing.T) {
+	s, first, second := lockedMaterializeFixture(t)
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Add(search.Document{
+		ID:             second.RevisionID,
+		SkillID:        second.SkillID,
+		OrganizationID: "demo",
+		RepositoryID:   "skills",
+		Path:           second.Path,
+		Commit:         second.Commit,
+		Tree:           second.Tree,
+		Name:           second.Name,
+		Description:    "Current plan capability.",
+		TrustLevel:     "approved",
+		Searchable:     true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service, err := capability.New(index, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.search = index
+	s.ConfigureCapabilities(service)
+	t.Cleanup(func() { s.ConfigureCapabilities(nil) })
+
+	if service.HasRevision(first.RevisionID) {
+		t.Fatal("retained historical revision unexpectedly present in active routing index")
+	}
+	if err := s.validateCapabilityNewSelection(first.RevisionID); err != nil {
+		t.Fatalf("retained active historical revision was rejected: %v", err)
+	}
+}
