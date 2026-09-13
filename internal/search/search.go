@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/retrieval"
 )
 
@@ -161,6 +162,20 @@ func (i *Index) Document(id string) (Document, bool) {
 	defer i.mu.RUnlock()
 	doc, ok := i.docs[id]
 	return doc, ok
+}
+
+// Documents returns every routing document, including non-searchable retained
+// revisions, in deterministic ID order. It is for control-plane validation,
+// not candidate generation.
+func (i *Index) Documents() []Document {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	docs := make([]Document, 0, len(i.docs))
+	for _, doc := range i.docs {
+		docs = append(docs, doc)
+	}
+	sort.Slice(docs, func(a, b int) bool { return docs[a].ID < docs[b].ID })
+	return docs
 }
 
 // List returns the active, searchable routing documents in deterministic order.
@@ -371,13 +386,14 @@ func (i *Index) vectorSearch(query string, depth int) ([]string, bool) {
 func routingText(doc Document) string {
 	var b strings.Builder
 	b.WriteString("name: " + doc.Name + "\ndescription: " + doc.Description + "\ncompatibility: " + doc.Compatibility + "\n")
-	keys := make([]string, 0, len(doc.Metadata))
-	for k := range doc.Metadata {
+	metadata := governance.RoutingMetadata(doc.Metadata)
+	keys := make([]string, 0, len(metadata))
+	for k := range metadata {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		b.WriteString(k + ": " + doc.Metadata[k] + "\n")
+		b.WriteString(k + ": " + metadata[k] + "\n")
 	}
 	return b.String()
 }
