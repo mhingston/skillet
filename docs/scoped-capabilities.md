@@ -47,6 +47,42 @@ capability_scope:
 
 A repository scope without a namespace is invalid. Traversal-like or malformed scope identifiers are rejected. Organisation identity continues to come from the authenticated server context; namespace/repository scope is discovery context and must not be treated as a replacement for repository authorization policy.
 
+## Governance lifecycle
+
+Governance remains source controlled. Maintainers express lifecycle and successor guidance in `SKILL.md` metadata, while repository configuration can provide the default owner. No separate governance service, proposal queue, identity synchronisation system, or automatic upgrade mechanism is introduced.
+
+The reserved control keys are:
+
+- `skillet.governance.state`: `active`, `deprecated`, or `yanked`;
+- `skillet.governance.owner`: explicit capability owner;
+- `skillet.governance.maintainers`: comma-separated maintainers;
+- `skillet.governance.reason`: human-readable lifecycle reason;
+- `skillet.deprecated`: backwards-compatible deprecation flag;
+- `skillet.replaced_by`: stable successor capability identity.
+
+For compatibility with the existing successor-lineage contract, `skillet.deprecated: "true"` still means deprecated. `skillet.replaced_by` is valid only for deprecated capabilities. A successor may be temporarily unresolved while repositories synchronise, but a resolved successor must stay within the same organisation and be visible everywhere the deprecated source is visible. Self-replacement, cross-organisation replacement, and replacement into a narrower visibility scope are rejected.
+
+Lifecycle affects eligibility, not relevance:
+
+- **active** capabilities are eligible for normal discovery when their scope and other search policy allow it;
+- **deprecated** capabilities remain discoverable, clearly expose status and successor guidance, and are never silently substituted with the successor;
+- **yanked** capabilities are excluded from new discovery and describe/select flows, but the immutable revision and package remain addressable for exact pinned lock restoration where the existing restoration contract permits it.
+
+Historical revisions are never rewritten when current governance changes. Materialisation and lock restoration always target the revision that was explicitly selected or pinned; `replaced_by` is presentation guidance only. Governance keys, ownership, scope, reasons, and successor identifiers are excluded from lexical/embedding routing text, so changing control metadata cannot improve or reduce semantic relevance by accident.
+
+Example:
+
+```yaml
+metadata:
+  skillet.governance.state: "deprecated"
+  skillet.governance.owner: "payments-platform"
+  skillet.governance.maintainers: "alice,bob"
+  skillet.governance.reason: "superseded by the v2 release procedure"
+  skillet.replaced_by: "acme/shared-skills/release-v2/SKILL.md"
+```
+
+Because M1 governance is stored with source metadata rather than as a separately mutable governance database, Git history and the immutable admitted revision provide the state-change evidence. If governance is later persisted independently, state changes must gain append-only audit evidence rather than mutating historical records in place.
+
 ## MCP tool metadata catalogues
 
 A tool catalogue is a deterministic JSON metadata snapshot. Skillet reads it at startup; the runtime does not connect to the described MCP server. Configuration intentionally contains no endpoint token, delegated credential, or execution flag:
@@ -119,4 +155,4 @@ The existing `search_skills` surface remains available. Because it has no namesp
 - negative false-activation rate;
 - scope leakage, required to remain `0` for the protected corpus.
 
-The mixed offline workflow proves tool-best, skill-best, both-needed and none-needed tasks; full-schema progressive disclosure; absence of a tool-execution surface; repository-scope isolation; unchanged skill materialisation; and unchanged legacy `search_skills` behaviour.
+The mixed offline workflow proves tool-best, skill-best, both-needed and none-needed tasks; full-schema progressive disclosure; absence of a tool-execution surface; repository-scope isolation; unchanged skill materialisation; and unchanged legacy `search_skills` behaviour. The governance workflow additionally proves deprecated successor guidance without substitution, yanked exclusion from new discovery, and exact historical restore of the retained revision digest/provenance.
