@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 )
@@ -29,7 +30,8 @@ CREATE TABLE IF NOT EXISTS knowledge_okf_links (
 CREATE INDEX IF NOT EXISTS knowledge_okf_links_target_idx ON knowledge_okf_links(target_document_id);
 `
 
-// OKFSearchResult adds OKF provenance to the existing bounded retrieval result.
+// OKFSearchResult adds optional OKF metadata/provenance to the existing bounded
+// knowledge retrieval result. Plain Markdown documents have zero-value metadata.
 type OKFSearchResult struct {
 	Result   Result   `json:"result"`
 	Metadata Metadata `json:"metadata"`
@@ -42,6 +44,7 @@ type OKFSearchResponse struct {
 
 // OKFRead is the progressive-disclosure read projection. Full document bodies
 // are still not enumerated by search; callers select one returned chunk first.
+// Plain Markdown documents have zero-value OKF metadata and no explicit links.
 type OKFRead struct {
 	Chunk    Chunk    `json:"chunk"`
 	Metadata Metadata `json:"metadata"`
@@ -134,8 +137,9 @@ func (s *Service) ReindexOKF(ctx context.Context, bundles []OKFBundle) (Stats, e
 	return Stats{Documents: len(snapshot.Documents), Chunks: len(snapshot.Chunks), VectorDegraded: degraded}, nil
 }
 
-// SearchOKF performs the existing knowledge search and enriches each compact
-// result with preserved OKF metadata/provenance.
+// SearchOKF performs the existing knowledge search and enriches OKF-backed
+// results with preserved metadata/provenance. Existing plain Markdown knowledge
+// remains readable through the same generic MCP surface with empty OKF metadata.
 func (s *Service) SearchOKF(ctx context.Context, query string, limit int) (OKFSearchResponse, error) {
 	if err := s.ensureOKFSchema(ctx); err != nil {
 		return OKFSearchResponse{}, err
@@ -157,8 +161,8 @@ func (s *Service) SearchOKF(ctx context.Context, query string, limit int) (OKFSe
 	return OKFSearchResponse{Results: results, Diagnostics: response.Diagnostics}, nil
 }
 
-// ReadOKF returns one selected chunk plus its document-level OKF provenance and
-// a bounded projection of explicit outgoing links.
+// ReadOKF returns one selected chunk plus optional document-level OKF provenance
+// and a bounded projection of explicit outgoing links.
 func (s *Service) ReadOKF(ctx context.Context, chunkID string) (OKFRead, error) {
 	if err := s.ensureOKFSchema(ctx); err != nil {
 		return OKFRead{}, err
@@ -230,6 +234,9 @@ func (s *Service) ensureOKFSchema(ctx context.Context) error {
 func (s *Service) loadOKFDetail(ctx context.Context, documentID string) (Metadata, []Link, error) {
 	var metadataJSON string
 	if err := s.catalog.db.QueryRowContext(ctx, `SELECT metadata_json FROM knowledge_okf_documents WHERE document_id = ?`, documentID).Scan(&metadataJSON); err != nil {
+		if err == sql.ErrNoRows {
+			return Metadata{}, nil, nil
+		}
 		return Metadata{}, nil, fmt.Errorf("load OKF metadata for %q: %w", documentID, err)
 	}
 	var metadata Metadata
