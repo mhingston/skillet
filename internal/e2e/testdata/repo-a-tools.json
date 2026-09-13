@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "server": {
+    "id": "deploy-a",
+    "title": "Repository A deploy fixture MCP",
+    "source": "fixture://deploy-a",
+    "compatibility": "mcp-2025-06-18"
+  },
+  "tools": [
+    {
+      "name": "deployment_status",
+      "title": "Deployment status",
+      "description": "fetch repository A deployment status environment revision tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "environment": {"type": "string"},
+          "revision": {"type": "string"}
+        },
+        "required": ["environment"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

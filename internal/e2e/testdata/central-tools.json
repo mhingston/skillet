@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "server": {
+    "id": "github",
+    "title": "GitHub fixture MCP",
+    "source": "fixture://github",
+    "compatibility": "mcp-2025-06-18",
+    "auth": "host-provided"
+  },
+  "tools": [
+    {
+      "name": "issue_triage",
+      "title": "Issue triage search",
+      "description": "search GitHub issues labels assignee state repository query tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "repository": {"type": "string"},
+          "labels": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

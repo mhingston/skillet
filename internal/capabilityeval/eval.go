@@ -1,6 +1,6 @@
 // Package capabilityeval provides deterministic, machine-readable evaluation
-// for scoped capability discovery. It deliberately evaluates compact routing
-// descriptors only; package bodies and scope metadata never enter routing text.
+// for scoped capability discovery. It evaluates compact routing descriptors
+// only; full skill bodies and MCP tool schemas never enter routing text.
 package capabilityeval
 
 import (
@@ -29,12 +29,13 @@ type Scope struct {
 }
 
 type Document struct {
-	RevisionID       string `yaml:"revision_id" json:"revision_id"`
-	SkillID          string `yaml:"skill_id" json:"skill_id"`
-	SourceRepository string `yaml:"source_repository" json:"source_repository"`
-	Name             string `yaml:"name" json:"name"`
-	Description      string `yaml:"description" json:"description"`
-	Scope            Scope  `yaml:"scope,omitempty" json:"scope,omitempty"`
+	RevisionID       string          `yaml:"revision_id" json:"revision_id"`
+	SkillID          string          `yaml:"skill_id" json:"skill_id"`
+	Kind             capability.Kind `yaml:"kind,omitempty" json:"kind,omitempty"`
+	SourceRepository string          `yaml:"source_repository" json:"source_repository"`
+	Name             string          `yaml:"name" json:"name"`
+	Description      string          `yaml:"description" json:"description"`
+	Scope            Scope           `yaml:"scope,omitempty" json:"scope,omitempty"`
 }
 
 type Case struct {
@@ -47,11 +48,12 @@ type Case struct {
 }
 
 type Thresholds struct {
-	Top1                        float64 `yaml:"top1" json:"top1"`
-	RecallAt3                   float64 `yaml:"recall_at_3" json:"recall_at_3"`
-	MultiRecallAt5              float64 `yaml:"multi_recall_at_5" json:"multi_recall_at_5"`
-	NegativeFalseActivationRate float64 `yaml:"negative_false_activation_rate" json:"negative_false_activation_rate"`
-	ScopeLeakage                float64 `yaml:"scope_leakage" json:"scope_leakage"`
+	Top1                        float64            `yaml:"top1" json:"top1"`
+	RecallAt3                   float64            `yaml:"recall_at_3" json:"recall_at_3"`
+	MultiRecallAt5              float64            `yaml:"multi_recall_at_5" json:"multi_recall_at_5"`
+	NegativeFalseActivationRate float64            `yaml:"negative_false_activation_rate" json:"negative_false_activation_rate"`
+	ScopeLeakage                float64            `yaml:"scope_leakage" json:"scope_leakage"`
+	RecallByKind                map[string]float64 `yaml:"recall_by_kind,omitempty" json:"recall_by_kind,omitempty"`
 }
 
 type Suite struct {
@@ -63,22 +65,25 @@ type Suite struct {
 }
 
 type Metrics struct {
-	Top1                        float64 `json:"top1"`
-	RecallAt3                   float64 `json:"recall_at_3"`
-	MultiRecallAt5              float64 `json:"multi_recall_at_5"`
-	NegativeFalseActivationRate float64 `json:"negative_false_activation_rate"`
-	ScopeLeakage                float64 `json:"scope_leakage"`
+	Top1                        float64                       `json:"top1"`
+	RecallAt3                   float64                       `json:"recall_at_3"`
+	MultiRecallAt5              float64                       `json:"multi_recall_at_5"`
+	NegativeFalseActivationRate float64                       `json:"negative_false_activation_rate"`
+	ScopeLeakage                float64                       `json:"scope_leakage"`
+	RecallByKind                map[string]float64            `json:"recall_by_kind"`
+	KindConfusion               map[string]map[string]int     `json:"kind_confusion"`
 }
 
 type CaseResult struct {
-	ID          string   `json:"id"`
-	Type        string   `json:"type"`
-	ReturnedIDs []string `json:"returned_ids,omitempty"`
-	Recall      float64  `json:"recall"`
-	Top1Correct bool     `json:"top1_correct"`
-	Activated   bool     `json:"activated"`
-	LeakageIDs  []string `json:"leakage_ids,omitempty"`
-	Degraded    bool     `json:"degraded"`
+	ID            string            `json:"id"`
+	Type          string            `json:"type"`
+	ReturnedIDs   []string          `json:"returned_ids,omitempty"`
+	ReturnedKinds []capability.Kind `json:"returned_kinds,omitempty"`
+	Recall        float64           `json:"recall"`
+	Top1Correct   bool              `json:"top1_correct"`
+	Activated     bool              `json:"activated"`
+	LeakageIDs    []string          `json:"leakage_ids,omitempty"`
+	Degraded      bool              `json:"degraded"`
 }
 
 type Report struct {
@@ -110,7 +115,7 @@ func Load(path string) (Suite, error) {
 }
 
 func (s Suite) Validate() error {
-	if s.Version != 1 {
+	if s.Version != 1 && s.Version != 2 {
 		return fmt.Errorf("unsupported scoped capability fixture version %d", s.Version)
 	}
 	if strings.TrimSpace(s.Name) == "" || len(s.Documents) == 0 || len(s.Cases) == 0 {
@@ -123,15 +128,28 @@ func (s Suite) Validate() error {
 		"negative_false_activation_rate": s.Thresholds.NegativeFalseActivationRate,
 		"scope_leakage": s.Thresholds.ScopeLeakage,
 	} {
-		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
-			return fmt.Errorf("threshold %s must be between 0 and 1", name)
+		if err := validateThreshold(name, value); err != nil {
+			return err
 		}
 	}
+	for kind, value := range s.Thresholds.RecallByKind {
+		if !validKind(capability.Kind(kind)) {
+			return fmt.Errorf("recall_by_kind has unsupported kind %q", kind)
+		}
+		if err := validateThreshold("recall_by_kind."+kind, value); err != nil {
+			return err
+		}
+	}
+
 	ids := map[string]struct{}{}
 	policies := map[string]Scope{}
 	for _, doc := range s.Documents {
+		kind := documentKind(doc)
 		if doc.RevisionID == "" || doc.SkillID == "" || doc.SourceRepository == "" || doc.Name == "" || doc.Description == "" {
 			return fmt.Errorf("capability documents require revision_id, skill_id, source_repository, name, and description")
+		}
+		if !validKind(kind) {
+			return fmt.Errorf("capability revision %q has unsupported kind %q", doc.RevisionID, kind)
 		}
 		if _, exists := ids[doc.RevisionID]; exists {
 			return fmt.Errorf("duplicate capability revision %q", doc.RevisionID)
@@ -190,19 +208,44 @@ func Evaluate(s Suite) (Report, error) {
 		return Report{}, err
 	}
 	policyByRepo := map[string]capability.SourcePolicy{}
+	kindByRevision := map[string]capability.Kind{}
+	detailOverrides := make([]capability.Detail, 0)
 	for _, doc := range s.Documents {
+		kind := documentKind(doc)
+		kindByRevision[doc.RevisionID] = kind
 		if err := idx.Add(search.Document{
 			ID: doc.RevisionID, SkillID: doc.SkillID, OrganizationID: "eval", RepositoryID: doc.SourceRepository,
 			Name: doc.Name, Description: doc.Description, TrustLevel: "approved", Searchable: true,
 		}); err != nil {
 			return Report{}, err
 		}
+		docScope := capability.Scope{Organization: "eval"}
 		if doc.Scope.Namespace != "" || doc.Scope.Repository != "" {
 			scope, err := capability.NewScope("eval", doc.Scope.Namespace, doc.Scope.Repository)
 			if err != nil {
 				return Report{}, err
 			}
+			docScope = scope
 			policyByRepo[doc.SourceRepository] = capability.SourcePolicy{RepositoryID: doc.SourceRepository, Scope: scope}
+		}
+		if kind != capability.KindSkill {
+			detail := capability.Detail{Descriptor: capability.Descriptor{
+				Identity:   capability.Identity{ID: doc.SkillID, Kind: kind},
+				Name:       doc.Name,
+				Description: doc.Description,
+				Scope:      docScope,
+				Source:     capability.Source{RepositoryID: doc.SourceRepository},
+				Provenance: capability.Provenance{RevisionID: doc.RevisionID},
+				TrustLevel: "approved",
+				Status:     capability.StatusActive,
+			}}
+			if kind == capability.KindTool {
+				detail.Tool = &capability.ToolDetail{
+					Name: doc.Name, InputSchema: json.RawMessage(`{"type":"object"}`),
+					InputSchemaSummary: "type=object", InputSchemaSHA256: "eval", UntrustedMetadata: true,
+				}
+			}
+			detailOverrides = append(detailOverrides, detail)
 		}
 	}
 	keys := make([]string, 0, len(policyByRepo))
@@ -218,10 +261,19 @@ func Evaluate(s Suite) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	if err := service.RegisterDetails(detailOverrides); err != nil {
+		return Report{}, err
+	}
 
-	report := Report{SchemaVersion: 1, Suite: s.Name, FixtureVersion: s.Version, Passed: true, Thresholds: s.Thresholds, Cases: make([]CaseResult, 0, len(s.Cases))}
+	report := Report{
+		SchemaVersion: 2, Suite: s.Name, FixtureVersion: s.Version, Passed: true, Thresholds: s.Thresholds,
+		Cases: make([]CaseResult, 0, len(s.Cases)),
+		Metrics: Metrics{RecallByKind: map[string]float64{}, KindConfusion: map[string]map[string]int{}},
+	}
 	var top1, recall3, multi5, negativeActivation, leakage float64
 	var singles, multis, negatives, leakageChecks int
+	kindRelevant := map[string]float64{}
+	kindFound := map[string]float64{}
 	for _, c := range s.Cases {
 		scope, err := capability.NewScope("eval", c.Scope.Namespace, c.Scope.Repository)
 		if err != nil {
@@ -234,6 +286,7 @@ func Evaluate(s Suite) (Report, error) {
 		result := CaseResult{ID: c.ID, Type: c.Type, Degraded: degraded}
 		for _, candidate := range results {
 			result.ReturnedIDs = append(result.ReturnedIDs, candidate.Capability.Provenance.RevisionID)
+			result.ReturnedKinds = append(result.ReturnedKinds, candidate.Capability.Identity.Kind)
 		}
 		for _, forbidden := range c.ForbiddenIDs {
 			leakageChecks++
@@ -242,18 +295,23 @@ func Evaluate(s Suite) (Report, error) {
 				result.LeakageIDs = append(result.LeakageIDs, forbidden)
 			}
 		}
+
+		recallK := 0
 		switch c.Type {
 		case CaseSingle:
 			singles++
-			result.Recall = recall(result.ReturnedIDs, c.RelevantIDs, 3)
+			recallK = 3
+			result.Recall = recall(result.ReturnedIDs, c.RelevantIDs, recallK)
 			result.Top1Correct = len(result.ReturnedIDs) > 0 && result.ReturnedIDs[0] == c.RelevantIDs[0]
 			if result.Top1Correct {
 				top1++
 			}
 			recall3 += result.Recall
+			recordConfusion(report.Metrics.KindConfusion, string(kindByRevision[c.RelevantIDs[0]]), topKind(result.ReturnedKinds))
 		case CaseMulti:
 			multis++
-			result.Recall = recall(result.ReturnedIDs, c.RelevantIDs, 5)
+			recallK = 5
+			result.Recall = recall(result.ReturnedIDs, c.RelevantIDs, recallK)
 			multi5 += result.Recall
 		case CaseNegative:
 			negatives++
@@ -261,16 +319,32 @@ func Evaluate(s Suite) (Report, error) {
 			if result.Activated {
 				negativeActivation++
 			}
+			recordConfusion(report.Metrics.KindConfusion, "none", topKind(result.ReturnedKinds))
+		}
+		if recallK > 0 {
+			for _, relevantID := range c.RelevantIDs {
+				kind := string(kindByRevision[relevantID])
+				kindRelevant[kind]++
+				if contains(prefix(result.ReturnedIDs, recallK), relevantID) {
+					kindFound[kind]++
+				}
+			}
 		}
 		report.Cases = append(report.Cases, result)
 	}
-	report.Metrics = Metrics{
-		Top1: ratio(top1, singles),
-		RecallAt3: ratio(recall3, singles),
-		MultiRecallAt5: ratio(multi5, multis),
-		NegativeFalseActivationRate: ratio(negativeActivation, negatives),
-		ScopeLeakage: ratio(leakage, leakageChecks),
+	report.Metrics.Top1 = ratio(top1, singles)
+	report.Metrics.RecallAt3 = ratio(recall3, singles)
+	report.Metrics.MultiRecallAt5 = ratio(multi5, multis)
+	report.Metrics.NegativeFalseActivationRate = ratio(negativeActivation, negatives)
+	report.Metrics.ScopeLeakage = ratio(leakage, leakageChecks)
+	for _, kind := range []capability.Kind{capability.KindSkill, capability.KindPlaybook, capability.KindTool} {
+		name := string(kind)
+		if kindRelevant[name] == 0 {
+			continue
+		}
+		report.Metrics.RecallByKind[name] = kindFound[name] / kindRelevant[name]
 	}
+
 	if report.Metrics.Top1 < s.Thresholds.Top1 {
 		report.Failures = append(report.Failures, fmt.Sprintf("top1 %.4f is below %.4f", report.Metrics.Top1, s.Thresholds.Top1))
 	}
@@ -285,6 +359,18 @@ func Evaluate(s Suite) (Report, error) {
 	}
 	if report.Metrics.ScopeLeakage > s.Thresholds.ScopeLeakage {
 		report.Failures = append(report.Failures, fmt.Sprintf("scope leakage %.4f exceeds %.4f", report.Metrics.ScopeLeakage, s.Thresholds.ScopeLeakage))
+	}
+	kindThresholds := make([]string, 0, len(s.Thresholds.RecallByKind))
+	for kind := range s.Thresholds.RecallByKind {
+		kindThresholds = append(kindThresholds, kind)
+	}
+	sort.Strings(kindThresholds)
+	for _, kind := range kindThresholds {
+		actual := report.Metrics.RecallByKind[kind]
+		threshold := s.Thresholds.RecallByKind[kind]
+		if actual < threshold {
+			report.Failures = append(report.Failures, fmt.Sprintf("%s recall %.4f is below %.4f", kind, actual, threshold))
+		}
 	}
 	report.Passed = len(report.Failures) == 0
 	return report, nil
@@ -302,16 +388,55 @@ func (r Report) JSON() ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
 }
 
+func validateThreshold(name string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fmt.Errorf("threshold %s must be between 0 and 1", name)
+	}
+	return nil
+}
+
+func documentKind(doc Document) capability.Kind {
+	if doc.Kind == "" {
+		return capability.KindSkill
+	}
+	return doc.Kind
+}
+
+func validKind(kind capability.Kind) bool {
+	return kind == capability.KindSkill || kind == capability.KindPlaybook || kind == capability.KindTool
+}
+
+func topKind(kinds []capability.Kind) string {
+	if len(kinds) == 0 {
+		return "none"
+	}
+	return string(kinds[0])
+}
+
+func recordConfusion(matrix map[string]map[string]int, expected, actual string) {
+	if matrix[expected] == nil {
+		matrix[expected] = map[string]int{}
+	}
+	matrix[expected][actual]++
+}
+
+func prefix(values []string, k int) []string {
+	if k < 0 {
+		return nil
+	}
+	if k > len(values) {
+		k = len(values)
+	}
+	return values[:k]
+}
+
 func recall(returned, relevant []string, k int) float64 {
 	if len(relevant) == 0 {
 		return 0
 	}
-	if k > len(returned) {
-		k = len(returned)
-	}
 	found := 0
 	for _, expected := range relevant {
-		if contains(returned[:k], expected) {
+		if contains(prefix(returned, k), expected) {
 			found++
 		}
 	}
