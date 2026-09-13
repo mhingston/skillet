@@ -97,14 +97,18 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 	}
 	sort.Strings(filters.Repositories)
 
-	eligibleCount := len(visible)
-	if lexicalDepth < eligibleCount {
-		lexicalDepth = eligibleCount
+	// Search the full pre-scope pool before compacting eligible ranks. This
+	// prevents an ineligible high-ranking source from crowding an eligible
+	// candidate out of the retrieval depth while still ensuring its original
+	// rank cannot affect capability RRF scores.
+	candidatePoolCount := len(all)
+	if lexicalDepth < candidatePoolCount {
+		lexicalDepth = candidatePoolCount
 	}
-	if vectorDepth < eligibleCount {
-		vectorDepth = eligibleCount
+	if vectorDepth < candidatePoolCount {
+		vectorDepth = candidatePoolCount
 	}
-	hits, degraded, err := s.index.SearchWithFilters(query, lexicalDepth, vectorDepth, eligibleCount, rrfK, filters)
+	hits, degraded, err := s.index.SearchEligible(query, lexicalDepth, vectorDepth, len(visible), rrfK, filters)
 	if err != nil {
 		return nil, degraded, err
 	}
