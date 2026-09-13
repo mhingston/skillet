@@ -5,6 +5,7 @@ import (
 
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/config"
+	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/mcptool"
 	"github.com/mhingston/skillet/internal/search"
 )
@@ -46,9 +47,7 @@ func loadConfiguredMCPToolCapabilities(c config.Config) (configuredMCPToolCapabi
 		}
 		out.Documents = append(out.Documents, set.Documents...)
 		out.Details = append(out.Details, set.Details...)
-		if configured.CapabilityScope.Namespace != "" || configured.CapabilityScope.Repository != "" {
-			out.Policies = append(out.Policies, capability.SourcePolicy{RepositoryID: configured.ID, Scope: scope})
-		}
+		out.Policies = append(out.Policies, capability.SourcePolicy{RepositoryID: configured.ID, Scope: scope})
 	}
 	return out, nil
 }
@@ -57,14 +56,15 @@ func configuredCapabilityService(index *search.Index, c config.Config, toolSets 
 	policies := make([]capability.SourcePolicy, 0, len(c.Repositories)+len(c.MCPToolCatalogues))
 	for i, repository := range c.Repositories {
 		configured := repository.CapabilityScope
-		if configured.Namespace == "" && configured.Repository == "" {
-			continue
-		}
 		scope, err := capability.NewScope(c.Organization.ID, configured.Namespace, configured.Repository)
 		if err != nil {
 			return nil, fmt.Errorf("repositories[%d].capability_scope: %w", i, err)
 		}
-		policies = append(policies, capability.SourcePolicy{RepositoryID: repository.ID, Scope: scope})
+		policies = append(policies, capability.SourcePolicy{
+			RepositoryID: repository.ID,
+			Scope:        scope,
+			Owner:        repository.Owner,
+		})
 	}
 	var details []capability.Detail
 	for _, tools := range toolSets {
@@ -76,6 +76,9 @@ func configuredCapabilityService(index *search.Index, c config.Config, toolSets 
 		return nil, err
 	}
 	if err := service.RegisterDetails(details); err != nil {
+		return nil, err
+	}
+	if err := service.RefreshGovernance(); err != nil {
 		return nil, err
 	}
 	return service, nil
@@ -94,6 +97,36 @@ func capabilityRoutingDocuments(skills, tools []search.Document) []search.Docume
 	out := make([]search.Document, 0, len(skills)+len(tools))
 	out = append(out, skills...)
 	out = append(out, tools...)
+	return out
+}
+
+// capabilityMetadataKeys preserves publisher governance/control metadata even
+// when semantic metadata is explicitly allow-listed. The search index itself
+// strips these reserved keys from lexical and embedding routing text.
+func capabilityMetadataKeys(configured []string) []string {
+	if len(configured) == 0 {
+		return nil
+	}
+	out := append([]string(nil), configured...)
+	for _, key := range []string{
+		governance.StateKey,
+		governance.OwnerKey,
+		governance.MaintainersKey,
+		governance.ReasonKey,
+		governance.DeprecatedKey,
+		governance.ReplacedByKey,
+	} {
+		seen := false
+		for _, current := range out {
+			if current == key {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			out = append(out, key)
+		}
+	}
 	return out
 }
 
