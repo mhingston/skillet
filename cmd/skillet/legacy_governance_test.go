@@ -7,12 +7,13 @@ import (
 	"github.com/mhingston/skillet/internal/search"
 )
 
-func TestLegacyRoutingDocumentsFailClosedForYankedGovernance(t *testing.T) {
+func TestLegacyRoutingDocumentsFailClosedForGovernanceAndApproval(t *testing.T) {
 	docs := []search.Document{
-		{ID: "active", RepositoryID: "central", Searchable: true},
-		{ID: "deprecated", RepositoryID: "central", Searchable: true, Metadata: map[string]string{governance.StateKey: string(governance.StateDeprecated)}},
-		{ID: "yanked", RepositoryID: "central", Searchable: true, Metadata: map[string]string{governance.StateKey: string(governance.StateYanked)}},
-		{ID: "invalid", RepositoryID: "central", Searchable: true, Metadata: map[string]string{governance.StateKey: "unknown"}},
+		{ID: "active", RepositoryID: "central", TrustLevel: "approved", Searchable: true},
+		{ID: "deprecated", RepositoryID: "central", TrustLevel: "approved", Searchable: true, Metadata: map[string]string{governance.StateKey: string(governance.StateDeprecated)}},
+		{ID: "yanked", RepositoryID: "central", TrustLevel: "approved", Searchable: true, Metadata: map[string]string{governance.StateKey: string(governance.StateYanked)}},
+		{ID: "invalid", RepositoryID: "central", TrustLevel: "approved", Searchable: true, Metadata: map[string]string{governance.StateKey: "unknown"}},
+		{ID: "unapproved", RepositoryID: "central", TrustLevel: "unapproved", Searchable: true},
 	}
 
 	got := legacyRoutingDocuments(docs, nil)
@@ -24,9 +25,9 @@ func TestLegacyRoutingDocumentsFailClosedForYankedGovernance(t *testing.T) {
 		searchable[doc.ID] = doc.Searchable
 	}
 	if !searchable["active"] || !searchable["deprecated"] {
-		t.Fatalf("active/deprecated legacy documents became ineligible: %+v", searchable)
+		t.Fatalf("active/deprecated approved legacy documents became ineligible: %+v", searchable)
 	}
-	if searchable["yanked"] || searchable["invalid"] {
-		t.Fatalf("yanked/invalid governance remained eligible in legacy discovery: %+v", searchable)
+	if searchable["yanked"] || searchable["invalid"] || searchable["unapproved"] {
+		t.Fatalf("yanked/invalid/unapproved governance remained eligible in legacy discovery: %+v", searchable)
 	}
 }
