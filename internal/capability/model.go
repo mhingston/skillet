@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/mhingston/skillet/internal/governance"
 )
 
 type Kind string
@@ -18,12 +20,12 @@ const (
 	KindTool     Kind = "tool"
 )
 
-type Status string
+type Status = governance.State
 
 const (
-	StatusActive     Status = "active"
-	StatusDeprecated Status = "deprecated"
-	StatusYanked     Status = "yanked"
+	StatusActive     Status = governance.StateActive
+	StatusDeprecated Status = governance.StateDeprecated
+	StatusYanked     Status = governance.StateYanked
 )
 
 // Scope is policy data, not routing text. An empty namespace/repository is
@@ -56,6 +58,9 @@ func (s Scope) Validate() error {
 	}
 	if err := validateScopePart("repository", s.Repository, 256, true); err != nil {
 		return err
+	}
+	if s.Repository != "" && s.Namespace == "" {
+		return fmt.Errorf("scope repository requires namespace")
 	}
 	return nil
 }
@@ -116,18 +121,19 @@ type Provenance struct {
 }
 
 type Descriptor struct {
-	Identity      Identity          `json:"identity"`
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	Version       string            `json:"version,omitempty"`
-	Compatibility string            `json:"compatibility,omitempty"`
-	Scope         Scope             `json:"scope"`
-	Source        Source            `json:"source"`
-	Provenance    Provenance        `json:"provenance"`
-	TrustLevel    string            `json:"trust_level,omitempty"`
-	Status        Status            `json:"status"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	HasScripts    bool              `json:"has_scripts"`
+	Identity      Identity            `json:"identity"`
+	Name          string              `json:"name"`
+	Description   string              `json:"description"`
+	Version       string              `json:"version,omitempty"`
+	Compatibility string              `json:"compatibility,omitempty"`
+	Scope         Scope               `json:"scope"`
+	Source        Source              `json:"source"`
+	Provenance    Provenance          `json:"provenance"`
+	TrustLevel    string              `json:"trust_level,omitempty"`
+	Status        Status              `json:"status"`
+	Governance    governance.Metadata `json:"governance"`
+	Metadata      map[string]string   `json:"metadata,omitempty"`
+	HasScripts    bool                `json:"has_scripts"`
 }
 
 type PackageDigests struct {
@@ -160,9 +166,19 @@ type Detail struct {
 	Tool            *ToolDetail    `json:"tool,omitempty"`
 }
 
-// SourcePolicy binds a source repository/catalogue to visibility scope.
-// RepositoryID is the routing source id (without the organisation prefix).
+// SourcePolicy binds a source repository/catalogue to visibility and default
+// ownership. RepositoryID is the routing source id (without the organisation
+// prefix). Ownership is presentation/control metadata and never routing text.
 type SourcePolicy struct {
 	RepositoryID string
 	Scope        Scope
+	Owner        string
+	Maintainers  []string
+}
+
+type GovernanceRecord struct {
+	RevisionID string
+	IdentityID string
+	Status     Status
+	Metadata   governance.Metadata
 }

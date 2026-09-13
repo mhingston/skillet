@@ -19,7 +19,21 @@ jobs:
         run: |
           if [ -f artifacts/verification/verification.json ]; then
             cat artifacts/verification/verification.json
+            {
+              echo '## Deterministic verification evidence'
+              echo '```json'
+              cat artifacts/verification/verification.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Retain verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ github.run_id }}
+          path: artifacts/verification/
+          if-no-files-found: error
+          retention-days: 7
       - run: docker build -t skillet:ci .
       - name: Validate Agent Skills fixtures with skills-ref
         uses: actions/setup-python@v5

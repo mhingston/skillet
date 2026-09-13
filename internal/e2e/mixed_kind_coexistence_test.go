@@ -19,9 +19,9 @@ func TestOfflineSkillPlaybookAndToolCoexistInLiveCapabilityIndex(t *testing.T) {
 	scope := mustCapabilityScope(t, "demo", "", "")
 
 	docs := []search.Document{
-		{ID: "rev-skill", SkillID: "demo/skill/incident", OrganizationID: "demo", RepositoryID: "skills", Name: "incident-response", Description: "diagnose outage mitigation stakeholder communication runbook skill", Searchable: true},
-		{ID: "rev-playbook", SkillID: "demo/playbook/release", OrganizationID: "demo", RepositoryID: "playbooks", Name: "release-rollout", Description: "canary rollout rollback production release playbook sequence", Searchable: true},
-		{ID: "rev-tool", SkillID: "mcp-tool:github:issue_triage", OrganizationID: "demo", RepositoryID: "tools", Name: "issue-triage", Description: "search GitHub issues labels assignee state repository query tool", Searchable: true},
+		{ID: "rev-skill", SkillID: "demo/skill/incident", OrganizationID: "demo", RepositoryID: "skills", Name: "incident-response", Description: "diagnose outage mitigation stakeholder communication runbook skill", TrustLevel: "approved", Searchable: true},
+		{ID: "rev-playbook", SkillID: "demo/playbook/release", OrganizationID: "demo", RepositoryID: "playbooks", Name: "release-rollout", Description: "canary rollout rollback production release playbook sequence", TrustLevel: "approved", Searchable: true},
+		{ID: "rev-tool", SkillID: "mcp-tool:github:issue_triage", OrganizationID: "demo", RepositoryID: "tools", Name: "issue-triage", Description: "search GitHub issues labels assignee state repository query tool", TrustLevel: "approved", Searchable: true},
 	}
 	mixed, err := search.New(nil)
 	if err != nil {
@@ -37,11 +37,11 @@ func TestOfflineSkillPlaybookAndToolCoexistInLiveCapabilityIndex(t *testing.T) {
 	if err := service.RegisterDetails([]capability.Detail{
 		{Descriptor: capability.Descriptor{
 			Identity: capability.Identity{ID: docs[1].SkillID, Kind: capability.KindPlaybook}, Name: docs[1].Name, Description: docs[1].Description,
-			Scope: scope, Source: capability.Source{RepositoryID: docs[1].RepositoryID}, Provenance: capability.Provenance{RevisionID: docs[1].ID}, Status: capability.StatusActive,
+			Scope: scope, Source: capability.Source{RepositoryID: docs[1].RepositoryID}, Provenance: capability.Provenance{RevisionID: docs[1].ID}, TrustLevel: "approved", Status: capability.StatusActive,
 		}},
 		{Descriptor: capability.Descriptor{
 			Identity: capability.Identity{ID: docs[2].SkillID, Kind: capability.KindTool}, Name: docs[2].Name, Description: docs[2].Description,
-			Scope: scope, Source: capability.Source{RepositoryID: docs[2].RepositoryID}, Provenance: capability.Provenance{RevisionID: docs[2].ID}, Status: capability.StatusActive,
+			Scope: scope, Source: capability.Source{RepositoryID: docs[2].RepositoryID}, Provenance: capability.Provenance{RevisionID: docs[2].ID}, TrustLevel: "approved", Status: capability.StatusActive,
 		}, Tool: &capability.ToolDetail{
 			ServerID: "github", Name: "issue_triage", InputSchema: map[string]any{
 				"type": "object",

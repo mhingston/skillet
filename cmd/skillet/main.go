@@ -87,7 +87,7 @@ func main() {
 		slog.Error("search index failed", "error", err)
 		os.Exit(2)
 	}
-	docs, err := catalog.RoutingDocuments(ctx, c.Organization.ID, c.Search.SearchableMetadataKeys)
+	docs, err := catalog.RoutingDocuments(ctx, c.Organization.ID, capabilityMetadataKeys(c.Search.SearchableMetadataKeys))
 	if err != nil {
 		slog.Error("load search index failed", "error", err)
 		os.Exit(2)
@@ -299,12 +299,12 @@ func main() {
 						slog.Error("repository sync failed", "repository", repo.ID, "error", err)
 					} else if run.Outcome == polling.Synchronized || run.Outcome == polling.SkippedUnchanged {
 						if run.Outcome == polling.Synchronized {
-							if refreshed, refreshErr := catalog.RoutingDocuments(ctx, c.Organization.ID, c.Search.SearchableMetadataKeys); refreshErr == nil {
+							if refreshed, refreshErr := catalog.RoutingDocuments(ctx, c.Organization.ID, capabilityMetadataKeys(c.Search.SearchableMetadataKeys)); refreshErr == nil {
 								if capabilityIndex != index {
 									_ = capabilityIndex.Rebuild(capabilityRoutingDocuments(refreshed, toolCapabilities.Documents))
 									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
 								} else {
-									_ = index.Rebuild(refreshed)
+									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
 								}
 								app.Metrics().ActiveSkills.Store(uint64(len(refreshed)))
 							}

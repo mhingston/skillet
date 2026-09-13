@@ -5,6 +5,7 @@ import (
 
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/config"
+	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/mcptool"
 	"github.com/mhingston/skillet/internal/search"
 )
@@ -46,9 +47,7 @@ func loadConfiguredMCPToolCapabilities(c config.Config) (configuredMCPToolCapabi
 		}
 		out.Documents = append(out.Documents, set.Documents...)
 		out.Details = append(out.Details, set.Details...)
-		if configured.CapabilityScope.Namespace != "" || configured.CapabilityScope.Repository != "" {
-			out.Policies = append(out.Policies, capability.SourcePolicy{RepositoryID: configured.ID, Scope: scope})
-		}
+		out.Policies = append(out.Policies, capability.SourcePolicy{RepositoryID: configured.ID, Scope: scope})
 	}
 	return out, nil
 }
@@ -57,14 +56,15 @@ func configuredCapabilityService(index *search.Index, c config.Config, toolSets 
 	policies := make([]capability.SourcePolicy, 0, len(c.Repositories)+len(c.MCPToolCatalogues))
 	for i, repository := range c.Repositories {
 		configured := repository.CapabilityScope
-		if configured.Namespace == "" && configured.Repository == "" {
-			continue
-		}
 		scope, err := capability.NewScope(c.Organization.ID, configured.Namespace, configured.Repository)
 		if err != nil {
 			return nil, fmt.Errorf("repositories[%d].capability_scope: %w", i, err)
 		}
-		policies = append(policies, capability.SourcePolicy{RepositoryID: repository.ID, Scope: scope})
+		policies = append(policies, capability.SourcePolicy{
+			RepositoryID: repository.ID,
+			Scope:        scope,
+			Owner:        repository.Owner,
+		})
 	}
 	var details []capability.Detail
 	for _, tools := range toolSets {
@@ -76,6 +76,9 @@ func configuredCapabilityService(index *search.Index, c config.Config, toolSets 
 		return nil, err
 	}
 	if err := service.RegisterDetails(details); err != nil {
+		return nil, err
+	}
+	if err := service.RefreshGovernance(); err != nil {
 		return nil, err
 	}
 	return service, nil
@@ -97,10 +100,42 @@ func capabilityRoutingDocuments(skills, tools []search.Document) []search.Docume
 	return out
 }
 
-// legacyRoutingDocuments returns only organisation-wide skill sources.
-// Repository or namespace-scoped skills and all MCP tool catalogues are absent
-// from the v1 search_skills index, which has no scope/kind input and must stay
-// skill-only.
+// capabilityMetadataKeys preserves publisher governance/control metadata even
+// when semantic metadata is explicitly allow-listed. The search index itself
+// strips these reserved keys from lexical and embedding routing text.
+func capabilityMetadataKeys(configured []string) []string {
+	if len(configured) == 0 {
+		return nil
+	}
+	out := append([]string(nil), configured...)
+	for _, key := range []string{
+		governance.StateKey,
+		governance.OwnerKey,
+		governance.MaintainersKey,
+		governance.ReasonKey,
+		governance.DeprecatedKey,
+		governance.ReplacedByKey,
+	} {
+		seen := false
+		for _, current := range out {
+			if current == key {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
+// legacyRoutingDocuments returns only organisation-wide skill sources that
+// remain eligible for new work. Repository or namespace-scoped skills and all
+// MCP tool catalogues are absent from the v1 search_skills index, which has no
+// scope/kind input and must stay skill-only. Invalid, yanked, or explicitly
+// unapproved governance fails closed on this compatibility surface; the
+// capability service reports validation errors on the scoped surface.
 func legacyRoutingDocuments(docs []search.Document, repositories []config.Repository) []search.Document {
 	scoped := make(map[string]struct{})
 	for _, repository := range repositories {
@@ -108,13 +143,14 @@ func legacyRoutingDocuments(docs []search.Document, repositories []config.Reposi
 			scoped[repository.ID] = struct{}{}
 		}
 	}
-	if len(scoped) == 0 {
-		return docs
-	}
 	out := make([]search.Document, 0, len(docs))
 	for _, doc := range docs {
 		if _, local := scoped[doc.RepositoryID]; local {
 			continue
+		}
+		state, _, err := governance.Parse(doc.Metadata, governance.Defaults{})
+		if err != nil || state == governance.StateYanked || (doc.TrustLevel != "" && doc.TrustLevel != "approved") {
+			doc.Searchable = false
 		}
 		out = append(out, doc)
 	}
