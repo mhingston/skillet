@@ -14,16 +14,18 @@ func TestAllowsNewSelectionByLifecycleAndApproval(t *testing.T) {
 		governance.DeprecatedKey: "true",
 		governance.ReplacedByKey: "demo/central/active",
 	}
+	legacyUnspecified := doc("rev-legacy", "demo/central/legacy", "central", "legacy", "legacy")
+	legacyUnspecified.TrustLevel = ""
 	yanked := doc("rev-yanked", "demo/central/yanked", "central", "yanked", "yanked")
 	yanked.Metadata = map[string]string{governance.StateKey: string(StatusYanked)}
 	unapproved := doc("rev-internal", "demo/central/internal", "central", "internal", "internal")
 	unapproved.TrustLevel = "internal"
 
-	service, err := New(newTestIndex(t, []search.Document{active, deprecated, yanked, unapproved}), nil)
+	service, err := New(newTestIndex(t, []search.Document{active, deprecated, legacyUnspecified, yanked, unapproved}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, revisionID := range []string{"rev-active", "rev-deprecated"} {
+	for _, revisionID := range []string{"rev-active", "rev-deprecated", "rev-legacy"} {
 		if err := service.AllowsNewSelection(revisionID); err != nil {
 			t.Fatalf("%s should allow new selection: %v", revisionID, err)
 		}
