@@ -19,6 +19,12 @@ jobs:
         run: |
           if [ -f artifacts/verification/verification.json ]; then
             cat artifacts/verification/verification.json
+            {
+              echo '## Deterministic verification evidence'
+              echo '```json'
+              cat artifacts/verification/verification.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
       - run: docker build -t skillet:ci .
       - name: Validate Agent Skills fixtures with skills-ref
