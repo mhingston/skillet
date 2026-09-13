@@ -19,6 +19,6 @@ status: stable
 
 # Handling
 
-Confirm the member's needs before presenting relevant options. Do not infer eligibility from unrelated call outcomes.
+Renewal objections are handled by confirming the member's needs before presenting relevant options. Do not infer eligibility from unrelated call outcomes.
 
 See the [coaching overview](/overview.md) for the wider workflow.
