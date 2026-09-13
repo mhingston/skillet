@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,20 +21,39 @@ var (
 	ErrInvalidConfiguration = errors.New("invalid authentication configuration")
 )
 
-// Identity contains claims trusted by a successful validator. Scopes are
-// represented as a set; claims are copied from the verified token and are not
-// used by the package for authorization decisions beyond RequiredScopes.
+// Identity contains only normalized claims trusted by a successful validator.
+// Permissions combine delegated scopes and workload/application roles into one
+// provider-neutral set. Attributes contains only explicitly configured trusted
+// claim mappings. Raw verified token claims never cross this boundary.
+//
+// Scopes is retained as a compatibility projection for callers that still need
+// to distinguish delegated OAuth scopes. New authorization code should consume
+// Permissions and Attributes instead.
 type Identity struct {
 	Subject        string
 	OrganizationID string
+	Permissions    map[string]struct{}
+	Attributes     map[string][]string
 	Scopes         map[string]struct{}
-	Claims         map[string]any
 }
 
-// HasScope reports whether the identity has the exact requested scope.
+// HasPermission reports whether the identity has the exact normalized permission.
+func (i Identity) HasPermission(permission string) bool {
+	_, ok := i.Permissions[permission]
+	return ok
+}
+
+// HasScope reports whether the identity has the exact delegated scope. It is a
+// compatibility helper; provider-neutral authorization should use HasPermission.
 func (i Identity) HasScope(scope string) bool {
 	_, ok := i.Scopes[scope]
 	return ok
+}
+
+// Attribute returns a defensive copy of one normalized attribute value list.
+func (i Identity) Attribute(name string) []string {
+	values := i.Attributes[name]
+	return append([]string(nil), values...)
 }
 
 // Validator authenticates one HTTP Authorization header.
@@ -66,7 +86,14 @@ func (v StaticBearerValidator) Authenticate(authorization string) (Identity, err
 	if !ok || len(credential) != len(v.token) || subtle.ConstantTimeCompare([]byte(credential), []byte(v.token)) != 1 {
 		return Identity{}, ErrUnauthorized
 	}
-	return Identity{Subject: "static", OrganizationID: v.organization, Scopes: cloneScopes(v.scopes)}, nil
+	scopes := cloneSet(v.scopes)
+	return Identity{
+		Subject:        "static",
+		OrganizationID: v.organization,
+		Permissions:    cloneSet(scopes),
+		Attributes:     map[string][]string{},
+		Scopes:         scopes,
+	}, nil
 }
 
 // JWTConfig controls validation of a signed OIDC/JWT access token.
@@ -80,6 +107,8 @@ type JWTConfig struct {
 	Audience          string
 	OrganizationClaim string
 	ScopeClaim        string
+	RoleClaim         string
+	AttributeClaims   map[string]string
 	RequiredScopes    []string
 	AllowedAlgorithms []string
 	KeyFunc           jwt.Keyfunc
@@ -87,15 +116,17 @@ type JWTConfig struct {
 	Now               func() time.Time
 }
 
-// JWTValidator validates signed JWTs and extracts the trusted organization and
-// scope claims. It supports space-delimited scope and JSON array scope claims;
-// when ScopeClaim is empty it reads "scope" and falls back to the common
-// "scp" claim.
+// JWTValidator validates signed JWTs and extracts a provider-neutral trusted
+// identity. When ScopeClaim is empty it reads "scope" and falls back to "scp".
+// When RoleClaim is empty it reads "roles". AttributeClaims maps normalized
+// provider-neutral attribute names to verified token claim names.
 type JWTValidator struct {
 	issuer            string
 	audience          string
 	organizationClaim string
 	scopeClaim        string
+	roleClaim         string
+	attributeClaims   map[string]string
 	requiredScopes    map[string]struct{}
 	allowedAlgorithms []string
 	keyFunc           jwt.Keyfunc
@@ -139,11 +170,36 @@ func NewJWTValidator(config JWTConfig) (JWTValidator, error) {
 	if scopeClaim == "" {
 		scopeClaim = "scope"
 	}
+	roleClaim := config.RoleClaim
+	if roleClaim == "" {
+		roleClaim = "roles"
+	}
+	if err := validateClaimName("organization", organizationClaim); err != nil {
+		return JWTValidator{}, err
+	}
+	if err := validateClaimName("scope", scopeClaim); err != nil {
+		return JWTValidator{}, err
+	}
+	if err := validateClaimName("role", roleClaim); err != nil {
+		return JWTValidator{}, err
+	}
+	attributeClaims := make(map[string]string, len(config.AttributeClaims))
+	for name, claim := range config.AttributeClaims {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, " \t\r\n") {
+			return JWTValidator{}, fmt.Errorf("%w: attribute name %q must be a non-empty token", ErrInvalidConfiguration, name)
+		}
+		if err := validateClaimName("attribute "+name, claim); err != nil {
+			return JWTValidator{}, err
+		}
+		attributeClaims[name] = claim
+	}
 	return JWTValidator{
 		issuer:            config.Issuer,
 		audience:          config.Audience,
 		organizationClaim: organizationClaim,
 		scopeClaim:        scopeClaim,
+		roleClaim:         roleClaim,
+		attributeClaims:   attributeClaims,
 		requiredScopes:    scopeSet(config.RequiredScopes),
 		allowedAlgorithms: algorithms,
 		keyFunc:           config.KeyFunc,
@@ -153,8 +209,8 @@ func NewJWTValidator(config JWTConfig) (JWTValidator, error) {
 }
 
 // Authenticate verifies the signature and registered claims before returning
-// identity data. All malformed, expired, wrongly scoped, or untrusted tokens
-// return ErrUnauthorized without echoing token contents.
+// normalized identity data. All malformed, expired, wrongly scoped, or
+// untrusted tokens return ErrUnauthorized without echoing token contents.
 func (v JWTValidator) Authenticate(authorization string) (Identity, error) {
 	credential, ok := bearerCredential(authorization)
 	if !ok {
@@ -184,16 +240,36 @@ func (v JWTValidator) Authenticate(authorization string) (Identity, error) {
 	if !ok {
 		return Identity{}, ErrUnauthorized
 	}
+	roles, ok := extractClaimValues(claims, v.roleClaim)
+	if !ok {
+		return Identity{}, ErrUnauthorized
+	}
+	permissions := cloneSet(scopes)
+	for role := range roles {
+		permissions[role] = struct{}{}
+	}
 	for required := range v.requiredScopes {
-		if _, present := scopes[required]; !present {
+		if _, present := permissions[required]; !present {
 			return Identity{}, ErrUnauthorized
 		}
+	}
+	attributes := make(map[string][]string, len(v.attributeClaims))
+	for name, claim := range v.attributeClaims {
+		values, ok := extractClaimValues(claims, claim)
+		if !ok {
+			return Identity{}, ErrUnauthorized
+		}
+		if len(values) == 0 {
+			continue
+		}
+		attributes[name] = sortedSetValues(values)
 	}
 	return Identity{
 		Subject:        subject,
 		OrganizationID: organization,
-		Scopes:         cloneScopes(scopes),
-		Claims:         cloneClaims(claims),
+		Permissions:    cloneSet(permissions),
+		Attributes:     cloneAttributes(attributes),
+		Scopes:         cloneSet(scopes),
 	}, nil
 }
 
@@ -219,20 +295,24 @@ func extractScopes(claims jwt.MapClaims, claim string) (map[string]struct{}, boo
 	result := map[string]struct{}{}
 	switch typed := value.(type) {
 	case string:
-		for _, scope := range strings.Fields(typed) {
+		parts := strings.Fields(typed)
+		if len(parts) == 0 {
+			return nil, false
+		}
+		for _, scope := range parts {
 			result[scope] = struct{}{}
 		}
 	case []any:
 		for _, item := range typed {
 			scope, ok := item.(string)
-			if !ok || strings.TrimSpace(scope) == "" || strings.ContainsAny(scope, " \t\r\n") {
+			if !ok || strings.TrimSpace(scope) == "" || strings.TrimSpace(scope) != scope || strings.ContainsAny(scope, " \t\r\n") {
 				return nil, false
 			}
 			result[scope] = struct{}{}
 		}
 	case []string:
 		for _, scope := range typed {
-			if strings.TrimSpace(scope) == "" || strings.ContainsAny(scope, " \t\r\n") {
+			if strings.TrimSpace(scope) == "" || strings.TrimSpace(scope) != scope || strings.ContainsAny(scope, " \t\r\n") {
 				return nil, false
 			}
 			result[scope] = struct{}{}
@@ -243,29 +323,86 @@ func extractScopes(claims jwt.MapClaims, claim string) (map[string]struct{}, boo
 	return result, true
 }
 
+// extractClaimValues parses roles and configured attributes. Missing claims are
+// optional and grant nothing. A present claim must be either one exact non-empty
+// string or an array of exact non-empty strings; malformed values fail closed.
+func extractClaimValues(claims jwt.MapClaims, claim string) (map[string]struct{}, bool) {
+	value, present := claims[claim]
+	if !present {
+		return map[string]struct{}{}, true
+	}
+	result := map[string]struct{}{}
+	add := func(value string) bool {
+		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value {
+			return false
+		}
+		result[value] = struct{}{}
+		return true
+	}
+	switch typed := value.(type) {
+	case string:
+		if !add(typed) {
+			return nil, false
+		}
+	case []any:
+		for _, item := range typed {
+			value, ok := item.(string)
+			if !ok || !add(value) {
+				return nil, false
+			}
+		}
+	case []string:
+		for _, value := range typed {
+			if !add(value) {
+				return nil, false
+			}
+		}
+	default:
+		return nil, false
+	}
+	return result, true
+}
+
+func validateClaimName(kind, claim string) error {
+	if strings.TrimSpace(claim) == "" || strings.TrimSpace(claim) != claim || strings.ContainsAny(claim, " \t\r\n") {
+		return fmt.Errorf("%w: %s claim must be a non-empty token", ErrInvalidConfiguration, kind)
+	}
+	return nil
+}
+
 func scopeSet(scopes []string) map[string]struct{} {
 	result := map[string]struct{}{}
 	for _, scope := range scopes {
-		if strings.TrimSpace(scope) != "" {
+		scope = strings.TrimSpace(scope)
+		if scope != "" {
 			result[scope] = struct{}{}
 		}
 	}
 	return result
 }
 
-func cloneScopes(scopes map[string]struct{}) map[string]struct{} {
-	result := make(map[string]struct{}, len(scopes))
-	for scope := range scopes {
-		result[scope] = struct{}{}
+func cloneSet(values map[string]struct{}) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for value := range values {
+		result[value] = struct{}{}
 	}
 	return result
 }
 
-func cloneClaims(claims jwt.MapClaims) map[string]any {
-	result := make(map[string]any, len(claims))
-	for key, value := range claims {
-		result[key] = value
+func cloneAttributes(attributes map[string][]string) map[string][]string {
+	result := make(map[string][]string, len(attributes))
+	for name, values := range attributes {
+		result[name] = append([]string(nil), values...)
 	}
+	return result
+}
+
+func sortedSetValues(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
 	return result
 }
 
