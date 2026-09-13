@@ -26,31 +26,33 @@ Case-folded concept-path collisions (for example `Policy.md` and `policy.md`) ar
 
 ## MCP surface
 
-`skillet-knowledge-mcp` exposes exactly three knowledge operations over stateless Streamable HTTP MCP:
+The normal Skillet server exposes the knowledge operations on its existing stateless Streamable HTTP MCP endpoint when the persisted knowledge catalogue is attached:
 
 - `search_knowledge`: bounded to 10 compact results and returns source revision plus preserved OKF metadata/provenance;
 - `read_knowledge`: reads one selected chunk and at most 50 document-level outgoing explicit links;
 - `get_backlinks`: returns only resolved incoming Markdown links, defaulting to 25 and capped at 50. No semantic relationship inference is performed.
 
-Returned document text and metadata are untrusted data. They are never interpreted as registry/server instructions and no execution broker is introduced.
+Returned document text and metadata are untrusted data. They are never interpreted as registry/server instructions and no execution broker is introduced. Capability/skill retrieval and knowledge retrieval remain separate domains and rankings.
 
-Example local server:
+For a local bundle, reconcile it into the same knowledge data directory used by `cmd/skillet`, then start the normal server:
 
 ```sh
-go run ./cmd/skillet-knowledge-mcp \
+go run ./cmd/skillet-knowledge index-okf \
   -data-dir ./data/knowledge \
   -bundle-root ./knowledge-bundle \
   -bundle-id organisation-wiki \
-  -revision "$(git -C ./knowledge-bundle rev-parse HEAD)" \
-  -listen 127.0.0.1:8081
+  -locator git://organisation/wiki \
+  -revision "$(git -C ./knowledge-bundle rev-parse HEAD)"
+
+go run ./cmd/skillet -config ./skillet.yaml
 ```
 
-The MCP endpoint is `http://127.0.0.1:8081/mcp` by default.
+With the default MCP path the knowledge tools are available alongside the existing skill tools at `/mcp`; there is no separately deployed knowledge MCP server.
 
 ## Verification and fixture provenance
 
 The checked-in fixture under `internal/knowledge/testdata/okf-v02` has two pinned upstream references. Its realistic bundle/template shape is adapted from `aws-samples/sample-okf-llm-wiki` at commit `f3465f04a84715781b6bfbdd65278a4261f2a519` (MIT No Attribution); that repository's pinned condensed reference describes OKF v0.1. The provenance/trust/lifecycle fields used by this fixture follow the canonical OKF v0.2 specification in `GoogleCloudPlatform/open-knowledge-format` at commit `ad30107c31c06aec8a7d5636e0d1058118604e6f`. `ATTRIBUTION.txt` records both sources and the adaptation boundary. The business content is intentionally rewritten as deterministic repository-owned data so the E2E stays offline and carries no upstream/customer data.
 
-The offline E2E starts a real Streamable HTTP MCP server, searches and reads knowledge, checks provenance and explicit backlinks, performs add/update/delete reconciliation, verifies stale links disappear and stable unchanged identity remains stable, and proves a malformed follow-up cannot corrupt the last committed state. MCP contract tests exercise advertised and runtime result bounds. Parser/security tests cover missing required metadata, case-folded identity collisions, symbolic-link escape attempts, oversized concepts, traversal links, and broken links.
+The offline E2E starts the real Skillet HTTP/MCP server, searches and reads knowledge, checks provenance and explicit backlinks, performs add/update/delete reconciliation, verifies stale links disappear and stable unchanged identity remains stable, and proves a malformed follow-up cannot corrupt the last committed state. MCP contract tests exercise advertised and runtime result bounds. Parser/security tests cover missing required metadata, case-folded identity collisions, symbolic-link escape attempts, oversized concepts, traversal links, and broken links.
 
-The #32 verification gate already runs `go test ./...`, so the OKF E2E and negative parser/security cases are part of the same project gate while the protected #34 retrieval metrics remain unchanged.
+The #32 verification gate runs `go test ./...`, `go vet ./...`, `go test -race ./...`, the protected skill and knowledge retrieval evals, Docker build, Agent Skills fixture validation, and GoReleaser configuration checks. The OKF E2E and negative parser/security cases therefore run inside the same project gate while the protected #34 retrieval metrics remain unchanged.
