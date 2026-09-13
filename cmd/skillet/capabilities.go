@@ -133,9 +133,9 @@ func capabilityMetadataKeys(configured []string) []string {
 // legacyRoutingDocuments returns only organisation-wide skill sources that
 // remain eligible for new work. Repository or namespace-scoped skills and all
 // MCP tool catalogues are absent from the v1 search_skills index, which has no
-// scope/kind input and must stay skill-only. Invalid or yanked governance fails
-// closed on this compatibility surface; the capability service reports the
-// validation error on the scoped surface.
+// scope/kind input and must stay skill-only. Invalid, yanked, or explicitly
+// unapproved governance fails closed on this compatibility surface; the
+// capability service reports validation errors on the scoped surface.
 func legacyRoutingDocuments(docs []search.Document, repositories []config.Repository) []search.Document {
 	scoped := make(map[string]struct{})
 	for _, repository := range repositories {
@@ -149,7 +149,7 @@ func legacyRoutingDocuments(docs []search.Document, repositories []config.Reposi
 			continue
 		}
 		state, _, err := governance.Parse(doc.Metadata, governance.Defaults{})
-		if err != nil || state == governance.StateYanked {
+		if err != nil || state == governance.StateYanked || (doc.TrustLevel != "" && doc.TrustLevel != "approved") {
 			doc.Searchable = false
 		}
 		out = append(out, doc)
