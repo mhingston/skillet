@@ -11,4 +11,4 @@ status: deprecated
 
 # Old guidance
 
-This page exists only so the reconciliation test can prove deleted content disappears.
+This obsolete retention guidance exists only so the reconciliation test can prove deleted content disappears.
