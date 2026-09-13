@@ -52,11 +52,28 @@ func capabilityServiceFor(app *Server) *capability.Service {
 }
 
 func (s *Server) validateCapabilityNewSelection(revisionID string) error {
-	// Only a configured service carries authoritative governance state. The
-	// fallback projection exists solely so legacy central indexes can participate
-	// in vNext discovery; applying it to v1 materialization would retroactively
-	// require legacy routing documents to have governance identity metadata.
+	// Current discovery candidates are governed by the configured capability
+	// service. Retained historical revisions are intentionally absent from that
+	// routing index, so explicit version/range selection must revalidate the
+	// immutable revision's source-controlled governance directly from catalogue
+	// history instead of treating absence from discovery as a yank.
 	service := configuredCapabilityServiceFor(s)
+	if service != nil && service.HasRevision(revisionID) {
+		return service.AllowsNewSelection(revisionID)
+	}
+	if s != nil && s.catalogue != nil {
+		record, err := s.catalogue.RevisionGovernance(context.Background(), s.organizationID, revisionID)
+		if err != nil {
+			return fmt.Errorf("resolve capability governance: %w", err)
+		}
+		if record.TrustLevel != "" && record.TrustLevel != "approved" {
+			return fmt.Errorf("capability revision is not approved for new selection")
+		}
+		if record.Status == capability.StatusYanked {
+			return fmt.Errorf("yanked capability revision is unavailable for new selection")
+		}
+		return nil
+	}
 	if service == nil {
 		return nil
 	}
