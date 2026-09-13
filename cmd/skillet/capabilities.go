@@ -23,3 +23,27 @@ func configuredCapabilityService(index *search.Index, c config.Config) (*capabil
 	}
 	return capability.New(index, policies)
 }
+
+// legacyRoutingDocuments returns only organisation-wide sources. Repository or
+// namespace-scoped capabilities are deliberately absent from the v1
+// search_skills index, which has no scope input and therefore cannot safely
+// expose local-only content.
+func legacyRoutingDocuments(docs []search.Document, repositories []config.Repository) []search.Document {
+	scoped := make(map[string]struct{})
+	for _, repository := range repositories {
+		if repository.CapabilityScope.Namespace != "" || repository.CapabilityScope.Repository != "" {
+			scoped[repository.ID] = struct{}{}
+		}
+	}
+	if len(scoped) == 0 {
+		return docs
+	}
+	out := make([]search.Document, 0, len(docs))
+	for _, doc := range docs {
+		if _, local := scoped[doc.RepositoryID]; local {
+			continue
+		}
+		out = append(out, doc)
+	}
+	return out
+}
