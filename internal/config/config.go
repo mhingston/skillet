@@ -39,11 +39,14 @@ type Organization struct {
 	DisplayName string `yaml:"display_name"`
 }
 type Auth struct {
-	Mode              string `yaml:"mode"`
-	StaticTokenEnv    string `yaml:"static_token_env"`
-	Issuer            string `yaml:"issuer"`
-	Audience          string `yaml:"audience"`
-	OrganizationClaim string `yaml:"organization_claim"`
+	Mode              string            `yaml:"mode"`
+	StaticTokenEnv    string            `yaml:"static_token_env"`
+	Issuer            string            `yaml:"issuer"`
+	Audience          string            `yaml:"audience"`
+	OrganizationClaim string            `yaml:"organization_claim"`
+	ScopeClaim        string            `yaml:"scope_claim"`
+	RoleClaim         string            `yaml:"role_claim"`
+	AttributeClaims   map[string]string `yaml:"attribute_claims"`
 }
 type Packages struct {
 	Enabled              bool   `yaml:"enabled"`
@@ -158,6 +161,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Auth.Mode != "development" && c.Auth.Mode != "static" && c.Auth.Mode != "oidc" {
 		return fmt.Errorf("auth.mode %q must be development, static, or oidc", c.Auth.Mode)
+	}
+	if err := c.Auth.validateClaimMapping(); err != nil {
+		return err
 	}
 	if c.Packages.Enabled || c.Server.PublicBaseURL != "" {
 		if c.Server.PublicBaseURL == "" {
