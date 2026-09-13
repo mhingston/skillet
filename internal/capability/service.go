@@ -3,7 +3,9 @@ package capability
 import (
 	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/search"
 )
 
@@ -14,8 +16,9 @@ type Candidate struct {
 
 type Service struct {
 	index             *search.Index
-	policies          map[string]Scope
+	policies          map[string]SourcePolicy
 	details           map[string]Detail
+	governance        map[string]GovernanceRecord
 	identityRevisions map[string]string
 }
 
@@ -23,7 +26,7 @@ func New(index *search.Index, policies []SourcePolicy) (*Service, error) {
 	if index == nil {
 		return nil, fmt.Errorf("capability search index is required")
 	}
-	values := make(map[string]Scope, len(policies))
+	values := make(map[string]SourcePolicy, len(policies))
 	for _, policy := range policies {
 		if policy.RepositoryID == "" {
 			return nil, fmt.Errorf("capability source policy repository id is required")
@@ -34,14 +37,142 @@ func New(index *search.Index, policies []SourcePolicy) (*Service, error) {
 		if _, exists := values[policy.RepositoryID]; exists {
 			return nil, fmt.Errorf("duplicate capability source policy %q", policy.RepositoryID)
 		}
-		values[policy.RepositoryID] = policy.Scope
+		policy.Maintainers = append([]string(nil), policy.Maintainers...)
+		values[policy.RepositoryID] = policy
 	}
 	return &Service{
 		index:             index,
 		policies:          values,
 		details:           map[string]Detail{},
+		governance:        map[string]GovernanceRecord{},
 		identityRevisions: map[string]string{},
 	}, nil
+}
+
+// PrepareDocuments projects reserved publisher governance metadata out of the
+// semantic routing document before indexing. Yanked revisions remain in the
+// document set for explicit provenance/history but are not searchable.
+func PrepareDocuments(docs []search.Document, policies []SourcePolicy) ([]search.Document, []GovernanceRecord, error) {
+	policyBySource := make(map[string]SourcePolicy, len(policies))
+	for _, policy := range policies {
+		policyBySource[policy.RepositoryID] = policy
+	}
+	prepared := make([]search.Document, 0, len(docs))
+	records := make([]GovernanceRecord, 0, len(docs))
+	for _, original := range docs {
+		doc := original
+		policy := policyBySource[doc.RepositoryID]
+		state, metadata, err := governance.Parse(doc.Metadata, governance.Defaults{Owner: policy.Owner, Maintainers: policy.Maintainers})
+		if err != nil {
+			return nil, nil, fmt.Errorf("capability %q governance: %w", doc.SkillID, err)
+		}
+		doc.Metadata = governance.RoutingMetadata(doc.Metadata)
+		if state == StatusYanked {
+			doc.Searchable = false
+		}
+		prepared = append(prepared, doc)
+		records = append(records, GovernanceRecord{RevisionID: doc.ID, IdentityID: doc.SkillID, Status: state, Metadata: metadata})
+	}
+	return prepared, records, nil
+}
+
+// RegisterGovernance attaches catalogue-control state to immutable routing
+// revisions. The operation validates the complete batch before mutating the
+// service so unresolved/invalid successor guidance cannot partially corrupt
+// catalogue presentation.
+func (s *Service) RegisterGovernance(records []GovernanceRecord) error {
+	next := make(map[string]GovernanceRecord, len(s.governance)+len(records))
+	for key, value := range s.governance {
+		next[key] = value
+	}
+	for _, record := range records {
+		if record.RevisionID == "" || record.IdentityID == "" {
+			return fmt.Errorf("governance record requires revision and stable identity")
+		}
+		if !governance.ValidState(record.Status) {
+			return fmt.Errorf("capability %q has invalid governance state %q", record.IdentityID, record.Status)
+		}
+		doc, ok := s.index.Document(record.RevisionID)
+		if !ok {
+			return fmt.Errorf("governance revision %q is not present in routing index", record.RevisionID)
+		}
+		if doc.SkillID != record.IdentityID {
+			return fmt.Errorf("governance identity %q does not match routing document %q", record.IdentityID, doc.SkillID)
+		}
+		if record.Metadata.ReplacedBy != "" && record.Status != StatusDeprecated {
+			return fmt.Errorf("replacement guidance for %q requires deprecated state", record.IdentityID)
+		}
+		if _, exists := next[record.RevisionID]; exists {
+			return fmt.Errorf("duplicate governance revision %q", record.RevisionID)
+		}
+		next[record.RevisionID] = record
+	}
+
+	resolved, err := s.validateReplacementGuidance(next)
+	if err != nil {
+		return err
+	}
+	s.governance = resolved
+	return nil
+}
+
+func (s *Service) validateReplacementGuidance(records map[string]GovernanceRecord) (map[string]GovernanceRecord, error) {
+	byIdentity := map[string]search.Document{}
+	for _, doc := range s.index.List(search.Filters{}) {
+		if doc.SkillID != "" {
+			byIdentity[doc.SkillID] = doc
+		}
+	}
+	out := make(map[string]GovernanceRecord, len(records))
+	for revisionID, record := range records {
+		record.Metadata.ReplacementResolved = false
+		if record.Metadata.ReplacedBy != "" {
+			source, ok := s.index.Document(revisionID)
+			if !ok {
+				return nil, fmt.Errorf("governance source revision %q disappeared", revisionID)
+			}
+			targetID := record.Metadata.ReplacedBy
+			if targetID == record.IdentityID {
+				return nil, fmt.Errorf("capability %q cannot replace itself", record.IdentityID)
+			}
+			if !strings.HasPrefix(targetID, "mcp-tool:") && strings.Contains(targetID, "/") {
+				organization, _, _ := strings.Cut(targetID, "/")
+				if organization != source.OrganizationID {
+					return nil, fmt.Errorf("replacement %q escapes organization %q", targetID, source.OrganizationID)
+				}
+			}
+			if target, ok := byIdentity[targetID]; ok {
+				if target.OrganizationID != source.OrganizationID {
+					return nil, fmt.Errorf("replacement %q crosses organization boundary", targetID)
+				}
+				if !replacementScopeAllowed(s.ScopeForDocument(source), s.ScopeForDocument(target)) {
+					return nil, fmt.Errorf("replacement %q is not visible throughout source scope", targetID)
+				}
+				record.Metadata.ReplacementResolved = true
+			}
+		}
+		out[revisionID] = record
+	}
+	return out, nil
+}
+
+func replacementScopeAllowed(source, target Scope) bool {
+	if source.Organization != target.Organization {
+		return false
+	}
+	if source.Namespace == "" {
+		return target.Namespace == "" && target.Repository == ""
+	}
+	if source.Repository == "" {
+		return target.Namespace == "" || target.Namespace == source.Namespace && target.Repository == ""
+	}
+	if target.Namespace == "" {
+		return true
+	}
+	if target.Namespace != source.Namespace {
+		return false
+	}
+	return target.Repository == "" || target.Repository == source.Repository
 }
 
 // RegisterDetails attaches progressively disclosed metadata to routing
@@ -55,6 +186,9 @@ func (s *Service) RegisterDetails(details []Detail) error {
 		if revisionID == "" || descriptor.Identity.ID == "" || descriptor.Identity.Kind == "" {
 			return fmt.Errorf("capability detail requires revision, stable identity, and kind")
 		}
+		if !governance.ValidState(descriptor.Status) {
+			return fmt.Errorf("capability detail %q has invalid state %q", revisionID, descriptor.Status)
+		}
 		doc, ok := s.index.Document(revisionID)
 		if !ok {
 			return fmt.Errorf("capability detail revision %q is not present in routing index", revisionID)
@@ -64,6 +198,9 @@ func (s *Service) RegisterDetails(details []Detail) error {
 		}
 		if previous, exists := s.identityRevisions[descriptor.Identity.ID]; exists && previous != revisionID {
 			return fmt.Errorf("stable capability identity %q aliases revisions %q and %q", descriptor.Identity.ID, previous, revisionID)
+		}
+		if descriptor.Identity.ID != doc.SkillID {
+			return fmt.Errorf("capability detail %q identity does not match routing document", revisionID)
 		}
 		if descriptor.Source.RepositoryID != doc.RepositoryID {
 			return fmt.Errorf("capability detail %q source does not match routing document", revisionID)
@@ -80,33 +217,75 @@ func (s *Service) RegisterDetails(details []Detail) error {
 		if descriptor.Status == StatusYanked && doc.Searchable {
 			return fmt.Errorf("yanked capability %q cannot remain searchable", revisionID)
 		}
+		detail.Descriptor.Metadata = governance.RoutingMetadata(detail.Descriptor.Metadata)
 		s.details[revisionID] = detail
 		s.identityRevisions[descriptor.Identity.ID] = revisionID
 	}
 	return nil
 }
 
+func (s *Service) policyForDocument(doc search.Document) SourcePolicy {
+	if policy, ok := s.policies[doc.RepositoryID]; ok {
+		return policy
+	}
+	return SourcePolicy{RepositoryID: doc.RepositoryID, Scope: Scope{Organization: doc.OrganizationID}}
+}
+
 // ScopeForDocument returns configured source scope. Sources without an
 // explicit policy remain organisation-wide for v1 compatibility.
 func (s *Service) ScopeForDocument(doc search.Document) Scope {
-	if scope, ok := s.policies[doc.RepositoryID]; ok {
-		return scope
-	}
-	return Scope{Organization: doc.OrganizationID}
+	return s.policyForDocument(doc).Scope
 }
 
 func (s *Service) visible(doc search.Document, request Scope) bool {
 	if !doc.Searchable || doc.OrganizationID != request.Organization {
 		return false
 	}
-	return s.ScopeForDocument(doc).Allows(request)
+	descriptor := s.descriptorForDocument(doc)
+	if descriptor.Status == StatusYanked {
+		return false
+	}
+	return descriptor.Scope.Allows(request)
 }
 
 func (s *Service) descriptorForDocument(doc search.Document) Descriptor {
+	var descriptor Descriptor
 	if detail, ok := s.details[doc.ID]; ok {
-		return detail.Descriptor
+		descriptor = detail.Descriptor
+	} else {
+		descriptor = descriptorFromDocument(doc, s.ScopeForDocument(doc))
 	}
-	return descriptorFromDocument(doc, s.ScopeForDocument(doc))
+	descriptor.Scope = s.ScopeForDocument(doc)
+	descriptor.Metadata = governance.RoutingMetadata(descriptor.Metadata)
+	if !governance.ValidState(descriptor.Status) {
+		descriptor.Status = StatusActive
+	}
+
+	policy := s.policyForDocument(doc)
+	control := governance.Metadata{Owner: policy.Owner, Maintainers: append([]string(nil), policy.Maintainers...)}
+	if record, ok := s.governance[doc.ID]; ok {
+		descriptor.Status = record.Status
+		control = record.Metadata
+		if control.Owner == "" {
+			control.Owner = policy.Owner
+		}
+		if len(control.Maintainers) == 0 {
+			control.Maintainers = append([]string(nil), policy.Maintainers...)
+		}
+	}
+	control.Visibility = visibilityForScope(descriptor.Scope)
+	descriptor.Governance = control
+	return descriptor
+}
+
+func visibilityForScope(scope Scope) governance.Visibility {
+	if scope.Repository != "" {
+		return governance.VisibilityRepository
+	}
+	if scope.Namespace != "" {
+		return governance.VisibilityNamespace
+	}
+	return governance.VisibilityOrganization
 }
 
 func (s *Service) List(request Scope, filters search.Filters) ([]search.Document, error) {
@@ -191,7 +370,9 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 }
 
 // Describe returns the compact capability description for an explicitly
-// selected immutable revision, provided it is visible in request scope.
+// selected immutable revision, provided it remains eligible for new use in the
+// request scope. Exact historical lock restoration is handled separately and
+// never follows successor guidance.
 func (s *Service) Describe(revisionID string, request Scope) (Descriptor, error) {
 	if err := request.Validate(); err != nil {
 		return Descriptor{}, err
@@ -221,10 +402,7 @@ func (s *Service) DescribeDetail(revisionID string, request Scope) (Detail, erro
 }
 
 func descriptorFromDocument(doc search.Document, scope Scope) Descriptor {
-	metadata := make(map[string]string, len(doc.Metadata))
-	for key, value := range doc.Metadata {
-		metadata[key] = value
-	}
+	metadata := governance.RoutingMetadata(doc.Metadata)
 	if len(metadata) == 0 {
 		metadata = nil
 	}
@@ -253,7 +431,9 @@ func (s *Service) Policies() []SourcePolicy {
 	sort.Strings(keys)
 	out := make([]SourcePolicy, 0, len(keys))
 	for _, key := range keys {
-		out = append(out, SourcePolicy{RepositoryID: key, Scope: s.policies[key]})
+		policy := s.policies[key]
+		policy.Maintainers = append([]string(nil), policy.Maintainers...)
+		out = append(out, policy)
 	}
 	return out
 }
