@@ -1,0 +1,39 @@
+name: knowledge-retrieval-v1
+version: 1
+corpus: knowledge-corpus-v1
+source_id: synthetic-handbook
+source_locator: fixture://knowledge-retrieval-v1
+source_revision: fixture-v1
+delete_after_first_index:
+  - stale-policy.md
+thresholds:
+  top1_accuracy: 0.80
+  recall_at3: 1.00
+  mrr: 0.88
+  negative_precision: 1.00
+  max_regression: 0.05
+cases:
+  - id: exact-rollback
+    query: production outage rollback procedure
+    expected_path: incident-response.md
+  - id: semantic-roadside
+    query: stranded motorist needs towing
+    expected_path: roadside.md
+  - id: heading-eligibility
+    query: who is eligible for roadside assistance
+    expected_path: roadside.md
+  - id: reliability-slo
+    query: service level availability target
+    expected_path: reliability.md
+  - id: retention-renewal
+    query: renewal save offer churn
+    expected_path: retention.md
+  - id: kpi-ambiguity
+    query: KPI reporting dashboard
+    expected_path: metrics.md
+  - id: deleted-stale-document
+    query: legacy zebra escrow procedure
+    negative: true
+  - id: unrelated-negative
+    query: banana photosynthesis potting compost
+    negative: true
