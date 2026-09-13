@@ -1,79 +1,124 @@
-version: 1
-name: scoped-capability-routing-v1
+version: 2
+name: mixed-scoped-capability-routing-v2
 documents:
-  - revision_id: rev-central-release
-    skill_id: demo/central/release
+  - revision_id: rev-incident-skill
+    skill_id: demo/central/incident-response
+    kind: skill
     source_repository: central
-    name: release-coordinator
-    description: coordinate shared production release checklist
-  - revision_id: rev-central-security
-    skill_id: demo/central/security
+    name: incident-response
+    description: diagnose outage mitigation stakeholder communication incident runbook skill
+  - revision_id: rev-release-playbook
+    skill_id: demo/central/release-playbook
+    kind: playbook
     source_repository: central
-    name: security-review
-    description: review authentication authorization threat model
-  - revision_id: rev-a-release
-    skill_id: demo/local-a/release
+    name: release-rollout
+    description: canary rollout rollback production release playbook sequence
+  - revision_id: rev-issue-triage-skill
+    skill_id: demo/central/issue-triage-skill
+    kind: skill
+    source_repository: central
+    name: issue-triage
+    description: triage incoming bug reports prioritization ownership handoff workflow skill
+  - revision_id: rev-github-issues-tool
+    skill_id: mcp-tool:github:issue_triage
+    kind: tool
+    source_repository: github-tools
+    name: issue-triage
+    description: search GitHub issues labels assignee state repository query tool
+  - revision_id: rev-incident-lookup-tool
+    skill_id: mcp-tool:ops:incident_lookup
+    kind: tool
+    source_repository: ops-tools
+    name: incident-lookup
+    description: lookup incident ticket records incident number service severity tool
+  - revision_id: rev-a-architecture-skill
+    skill_id: demo/local-a/architecture
+    kind: skill
     source_repository: local-a
     scope:
       namespace: team
       repository: repo-a
-    name: release-coordinator
-    description: repository A canary deployment database migration release
-  - revision_id: rev-a-docs
-    skill_id: demo/local-a/docs
-    source_repository: local-a
+    name: repository-architecture
+    description: repository A architecture module dependency boundary analysis skill
+  - revision_id: rev-a-deploy-tool
+    skill_id: mcp-tool:deploy-a:deployment_status
+    kind: tool
+    source_repository: deploy-a-tools
     scope:
       namespace: team
       repository: repo-a
-    name: docs-maintenance
-    description: repository A readme wording documentation cleanup
-  - revision_id: rev-b-release
-    skill_id: demo/local-b/release
-    source_repository: local-b
+    name: deployment-status
+    description: fetch repository A deployment status environment revision tool
+  - revision_id: rev-b-deploy-tool
+    skill_id: mcp-tool:deploy-b:deployment_status
+    kind: tool
+    source_repository: deploy-b-tools
     scope:
       namespace: team
       repository: repo-b
-    name: release-coordinator
-    description: repository B blue green deployment queue migration release
+    name: deployment-status
+    description: fetch repository B deployment status environment revision tool
 cases:
-  - id: central-expected
+  - id: skill-best-match
     type: single
-    query: shared production release checklist
-    relevant_ids: [rev-central-release]
+    query: diagnose outage mitigation stakeholder communication incident runbook
+    relevant_ids: [rev-incident-skill]
     scope: {}
-    forbidden_ids: [rev-a-release, rev-a-docs, rev-b-release]
-  - id: local-a-expected
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: playbook-best-match
     type: single
-    query: repository A canary deployment database migration
-    relevant_ids: [rev-a-release]
+    query: canary rollout rollback production release playbook sequence
+    relevant_ids: [rev-release-playbook]
+    scope: {}
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: tool-best-match
+    type: single
+    query: search GitHub issues labels assignee state repository query
+    relevant_ids: [rev-github-issues-tool]
+    scope: {}
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: similar-name-tool-intent
+    type: single
+    query: issue triage search labels assignee state query
+    relevant_ids: [rev-github-issues-tool]
+    scope: {}
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: similar-name-skill-intent
+    type: single
+    query: issue triage prioritization ownership handoff workflow
+    relevant_ids: [rev-issue-triage-skill]
+    scope: {}
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: tempting-tool-must-not-beat-skill
+    type: single
+    query: incident outage mitigation stakeholder communication runbook
+    relevant_ids: [rev-incident-skill]
+    scope: {}
+    forbidden_ids: [rev-a-architecture-skill, rev-a-deploy-tool, rev-b-deploy-tool]
+  - id: local-tool-scope
+    type: single
+    query: fetch repository A deployment status environment revision
+    relevant_ids: [rev-a-deploy-tool]
     scope:
       namespace: team
       repository: repo-a
-    forbidden_ids: [rev-b-release]
-  - id: local-b-expected
+    forbidden_ids: [rev-b-deploy-tool]
+  - id: local-skill-scope
     type: single
-    query: repository B blue green deployment queue migration
-    relevant_ids: [rev-b-release]
-    scope:
-      namespace: team
-      repository: repo-b
-    forbidden_ids: [rev-a-release, rev-a-docs]
-  - id: similar-name-local-scope
-    type: single
-    query: repository A canary deployment
-    relevant_ids: [rev-a-release]
+    query: repository A architecture module dependency boundary analysis
+    relevant_ids: [rev-a-architecture-skill]
     scope:
       namespace: team
       repository: repo-a
-    forbidden_ids: [rev-b-release]
-  - id: irrelevant-local-must-not-win
-    type: single
-    query: authentication authorization threat model
-    relevant_ids: [rev-central-security]
+    forbidden_ids: [rev-b-deploy-tool]
+  - id: skill-and-tool-needed
+    type: multi
+    query: repository A architecture dependency analysis and fetch deployment status environment revision
+    relevant_ids: [rev-a-architecture-skill, rev-a-deploy-tool]
     scope:
       namespace: team
       repository: repo-a
-    forbidden_ids: [rev-b-release]
+    forbidden_ids: [rev-b-deploy-tool]
   - id: no-capability-needed
     type: negative
     query: zyzzyva quokka xylophone
@@ -81,18 +126,14 @@ cases:
     scope:
       namespace: team
       repository: repo-a
-    forbidden_ids: [rev-b-release]
-  - id: central-plus-local
-    type: multi
-    query: authentication review and repository A canary deployment
-    relevant_ids: [rev-central-security, rev-a-release]
-    scope:
-      namespace: team
-      repository: repo-a
-    forbidden_ids: [rev-b-release]
+    forbidden_ids: [rev-b-deploy-tool]
 thresholds:
   top1: 1.0
   recall_at_3: 1.0
   multi_recall_at_5: 1.0
   negative_false_activation_rate: 0.0
   scope_leakage: 0.0
+  recall_by_kind:
+    skill: 1.0
+    playbook: 1.0
+    tool: 1.0

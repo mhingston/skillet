@@ -75,7 +75,7 @@ func addCapabilityTools(server *mcp.Server, app *Server) {
 	} else if app.search != nil {
 		// Existing sources are central by default, so vNext capability discovery
 		// is available without requiring a migration. A configured capability
-		// service replaces this projection when repository-local policies exist.
+		// service replaces this projection when scoped or non-skill sources exist.
 		service, _ = capability.New(app.search, nil)
 	}
 	if service == nil {
@@ -83,13 +83,13 @@ func addCapabilityTools(server *mcp.Server, app *Server) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_capabilities",
-		Description: "Experimental scoped capability discovery. Returns compact skill/playbook descriptors only; repository-local capabilities are visible only in the exact supplied scope and are never boosted merely for being local.",
+		Description: "Experimental scoped capability discovery across skills, playbooks, and metadata-only MCP tools. Results stay compact; full tool schemas require explicit describe_capability selection. Skillet never executes discovered tools.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input searchCapabilitiesInput) (*mcp.CallToolResult, searchCapabilitiesOutput, error) {
 		return app.searchCapabilitiesTool(ctx, service, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "describe_capability",
-		Description: "Describe one explicitly selected capability candidate and its immutable provenance. This never substitutes a successor, installs content, or executes a tool.",
+		Description: "Describe one explicitly selected capability and its provenance. Tool schemas are returned as untrusted metadata only; this never invokes a discovered tool or substitutes a successor.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
 		return app.describeCapabilityTool(ctx, service, input)
 	})
@@ -159,7 +159,7 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 		}
 		out.Candidates = append(out.Candidates, capabilityCandidate{CandidateID: token, Capability: result.Capability, Ranking: result.Ranking})
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Found %d scoped capability candidate(s). Explicitly select before describing or materializing.", len(out.Candidates))}}}, out, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Found %d scoped capability candidate(s). Explicitly select before describing or materializing; discovered tools are metadata only.", len(out.Candidates))}}}, out, nil
 }
 
 func (s *Server) describeCapabilityTool(ctx context.Context, service *capability.Service, input describeCapabilityInput) (*mcp.CallToolResult, describeCapabilityOutput, error) {
@@ -178,27 +178,29 @@ func (s *Server) describeCapabilityTool(ctx context.Context, service *capability
 	if err != nil {
 		return nil, describeCapabilityOutput{}, err
 	}
-	descriptor, err := service.Describe(payload.RevisionID, scope)
+	detail, err := service.DescribeDetail(payload.RevisionID, scope)
 	if err != nil {
 		return nil, describeCapabilityOutput{}, err
 	}
-	detail := capability.Detail{Descriptor: descriptor}
+	descriptor := detail.Descriptor
+	materializeCandidateID := ""
 	if descriptor.Identity.Kind == capability.KindSkill {
 		detail.MaterializeWith = "materialize_skill"
-	}
-	if s.catalogue != nil {
-		info, err := s.catalogue.Revision(ctx, organizationID, payload.RevisionID)
-		if err != nil {
-			return nil, describeCapabilityOutput{}, err
+		materializeCandidateID = input.CandidateID
+		if s.catalogue != nil {
+			info, err := s.catalogue.Revision(ctx, organizationID, payload.RevisionID)
+			if err != nil {
+				return nil, describeCapabilityOutput{}, err
+			}
+			if info.SkillID != descriptor.Identity.ID || info.Commit != descriptor.Provenance.Commit || info.Tree != descriptor.Provenance.Tree {
+				return nil, describeCapabilityOutput{}, fmt.Errorf("capability provenance no longer matches selected revision")
+			}
+			detail.Descriptor.Source.URL = info.RepositoryURL
+			detail.Descriptor.Source.RepositoryID = info.RepositoryID
+			detail.Descriptor.Provenance.ArchiveSHA256TarGZ = info.ArchiveSHA256TarGZ
+			detail.Descriptor.Provenance.ArchiveSHA256ZIP = info.ArchiveSHA256ZIP
+			detail.PackageDigests = capability.PackageDigests{TarGZ: info.ArchiveSHA256TarGZ, ZIP: info.ArchiveSHA256ZIP}
 		}
-		if info.SkillID != descriptor.Identity.ID || info.Commit != descriptor.Provenance.Commit || info.Tree != descriptor.Provenance.Tree {
-			return nil, describeCapabilityOutput{}, fmt.Errorf("capability provenance no longer matches selected revision")
-		}
-		detail.Descriptor.Source.URL = info.RepositoryURL
-		detail.Descriptor.Source.RepositoryID = info.RepositoryID
-		detail.Descriptor.Provenance.ArchiveSHA256TarGZ = info.ArchiveSHA256TarGZ
-		detail.Descriptor.Provenance.ArchiveSHA256ZIP = info.ArchiveSHA256ZIP
-		detail.PackageDigests = capability.PackageDigests{TarGZ: info.ArchiveSHA256TarGZ, ZIP: info.ArchiveSHA256ZIP}
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Capability described from the explicitly selected immutable revision; no replacement or execution was performed."}}}, describeCapabilityOutput{Detail: detail, MaterializeCandidateID: input.CandidateID}, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Capability described after explicit selection. MCP tool schemas, when present, are untrusted metadata and no tool execution was performed."}}}, describeCapabilityOutput{Detail: detail, MaterializeCandidateID: materializeCandidateID}, nil
 }

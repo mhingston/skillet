@@ -5,11 +5,56 @@ import (
 
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/config"
+	"github.com/mhingston/skillet/internal/mcptool"
 	"github.com/mhingston/skillet/internal/search"
 )
 
-func configuredCapabilityService(index *search.Index, c config.Config) (*capability.Service, error) {
-	policies := make([]capability.SourcePolicy, 0, len(c.Repositories))
+type configuredMCPToolCapabilities struct {
+	Documents []search.Document
+	Details   []capability.Detail
+	Policies  []capability.SourcePolicy
+}
+
+func loadConfiguredMCPToolCapabilities(c config.Config) (configuredMCPToolCapabilities, error) {
+	out := configuredMCPToolCapabilities{}
+	identitySources := map[string]string{}
+	revisionSources := map[string]string{}
+	for i, configured := range c.MCPToolCatalogues {
+		scope, err := capability.NewScope(c.Organization.ID, configured.CapabilityScope.Namespace, configured.CapabilityScope.Repository)
+		if err != nil {
+			return configuredMCPToolCapabilities{}, fmt.Errorf("mcp_tool_catalogues[%d].capability_scope: %w", i, err)
+		}
+		set, err := mcptool.LoadFile(configured.Path, mcptool.Options{
+			CatalogueID: configured.ID,
+			Scope:       scope,
+			TrustLevel:  configured.TrustLevel,
+		})
+		if err != nil {
+			return configuredMCPToolCapabilities{}, err
+		}
+		for _, detail := range set.Details {
+			stableID := detail.Descriptor.Identity.ID
+			if previous, exists := identitySources[stableID]; exists {
+				return configuredMCPToolCapabilities{}, fmt.Errorf("duplicate MCP server/tool identity %q across catalogues %q and %q", stableID, previous, configured.ID)
+			}
+			identitySources[stableID] = configured.ID
+			revisionID := detail.Descriptor.Provenance.RevisionID
+			if previous, exists := revisionSources[revisionID]; exists {
+				return configuredMCPToolCapabilities{}, fmt.Errorf("duplicate MCP tool revision %q across catalogues %q and %q", revisionID, previous, configured.ID)
+			}
+			revisionSources[revisionID] = configured.ID
+		}
+		out.Documents = append(out.Documents, set.Documents...)
+		out.Details = append(out.Details, set.Details...)
+		if configured.CapabilityScope.Namespace != "" || configured.CapabilityScope.Repository != "" {
+			out.Policies = append(out.Policies, capability.SourcePolicy{RepositoryID: configured.ID, Scope: scope})
+		}
+	}
+	return out, nil
+}
+
+func configuredCapabilityService(index *search.Index, c config.Config, toolSets ...configuredMCPToolCapabilities) (*capability.Service, error) {
+	policies := make([]capability.SourcePolicy, 0, len(c.Repositories)+len(c.MCPToolCatalogues))
 	for i, repository := range c.Repositories {
 		configured := repository.CapabilityScope
 		if configured.Namespace == "" && configured.Repository == "" {
@@ -21,7 +66,19 @@ func configuredCapabilityService(index *search.Index, c config.Config) (*capabil
 		}
 		policies = append(policies, capability.SourcePolicy{RepositoryID: repository.ID, Scope: scope})
 	}
-	return capability.New(index, policies)
+	var details []capability.Detail
+	for _, tools := range toolSets {
+		policies = append(policies, tools.Policies...)
+		details = append(details, tools.Details...)
+	}
+	service, err := capability.New(index, policies)
+	if err != nil {
+		return nil, err
+	}
+	if err := service.RegisterDetails(details); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 func hasScopedCapabilitySources(repositories []config.Repository) bool {
@@ -33,10 +90,17 @@ func hasScopedCapabilitySources(repositories []config.Repository) bool {
 	return false
 }
 
-// legacyRoutingDocuments returns only organisation-wide sources. Repository or
-// namespace-scoped capabilities are deliberately absent from the v1
-// search_skills index, which has no scope input and therefore cannot safely
-// expose local-only content.
+func capabilityRoutingDocuments(skills, tools []search.Document) []search.Document {
+	out := make([]search.Document, 0, len(skills)+len(tools))
+	out = append(out, skills...)
+	out = append(out, tools...)
+	return out
+}
+
+// legacyRoutingDocuments returns only organisation-wide skill sources.
+// Repository or namespace-scoped skills and all MCP tool catalogues are absent
+// from the v1 search_skills index, which has no scope/kind input and must stay
+// skill-only.
 func legacyRoutingDocuments(docs []search.Document, repositories []config.Repository) []search.Document {
 	scoped := make(map[string]struct{})
 	for _, repository := range repositories {

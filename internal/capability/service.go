@@ -13,8 +13,10 @@ type Candidate struct {
 }
 
 type Service struct {
-	index    *search.Index
-	policies map[string]Scope
+	index             *search.Index
+	policies          map[string]Scope
+	details           map[string]Detail
+	identityRevisions map[string]string
 }
 
 func New(index *search.Index, policies []SourcePolicy) (*Service, error) {
@@ -34,7 +36,54 @@ func New(index *search.Index, policies []SourcePolicy) (*Service, error) {
 		}
 		values[policy.RepositoryID] = policy.Scope
 	}
-	return &Service{index: index, policies: values}, nil
+	return &Service{
+		index:             index,
+		policies:          values,
+		details:           map[string]Detail{},
+		identityRevisions: map[string]string{},
+	}, nil
+}
+
+// RegisterDetails attaches progressively disclosed metadata to routing
+// documents already present in the capability index. It is intended for
+// metadata-only capability kinds such as MCP tools. Registration never adds
+// an execution function.
+func (s *Service) RegisterDetails(details []Detail) error {
+	for _, detail := range details {
+		descriptor := detail.Descriptor
+		revisionID := descriptor.Provenance.RevisionID
+		if revisionID == "" || descriptor.Identity.ID == "" || descriptor.Identity.Kind == "" {
+			return fmt.Errorf("capability detail requires revision, stable identity, and kind")
+		}
+		doc, ok := s.index.Document(revisionID)
+		if !ok {
+			return fmt.Errorf("capability detail revision %q is not present in routing index", revisionID)
+		}
+		if _, exists := s.details[revisionID]; exists {
+			return fmt.Errorf("duplicate capability detail revision %q", revisionID)
+		}
+		if previous, exists := s.identityRevisions[descriptor.Identity.ID]; exists && previous != revisionID {
+			return fmt.Errorf("stable capability identity %q aliases revisions %q and %q", descriptor.Identity.ID, previous, revisionID)
+		}
+		if descriptor.Source.RepositoryID != doc.RepositoryID {
+			return fmt.Errorf("capability detail %q source does not match routing document", revisionID)
+		}
+		if descriptor.Scope != s.ScopeForDocument(doc) {
+			return fmt.Errorf("capability detail %q scope does not match source policy", revisionID)
+		}
+		if descriptor.Identity.Kind == KindTool && detail.Tool == nil {
+			return fmt.Errorf("tool capability %q is missing tool detail", revisionID)
+		}
+		if descriptor.Identity.Kind != KindTool && detail.Tool != nil {
+			return fmt.Errorf("non-tool capability %q cannot carry MCP tool detail", revisionID)
+		}
+		if descriptor.Status == StatusYanked && doc.Searchable {
+			return fmt.Errorf("yanked capability %q cannot remain searchable", revisionID)
+		}
+		s.details[revisionID] = detail
+		s.identityRevisions[descriptor.Identity.ID] = revisionID
+	}
+	return nil
 }
 
 // ScopeForDocument returns configured source scope. Sources without an
@@ -51,6 +100,13 @@ func (s *Service) visible(doc search.Document, request Scope) bool {
 		return false
 	}
 	return s.ScopeForDocument(doc).Allows(request)
+}
+
+func (s *Service) descriptorForDocument(doc search.Document) Descriptor {
+	if detail, ok := s.details[doc.ID]; ok {
+		return detail.Descriptor
+	}
+	return descriptorFromDocument(doc, s.ScopeForDocument(doc))
 }
 
 func (s *Service) List(request Scope, filters search.Filters) ([]search.Document, error) {
@@ -84,7 +140,7 @@ func (s *Service) Search(query string, lexicalDepth, vectorDepth, limit, rrfK in
 	eligibleRepositories := make(map[string]struct{})
 	for _, doc := range all {
 		if s.visible(doc, request) {
-			visible[doc.ID] = descriptorFromDocument(doc, s.ScopeForDocument(doc))
+			visible[doc.ID] = s.descriptorForDocument(doc)
 			eligibleRepositories[doc.RepositoryID] = struct{}{}
 		}
 	}
@@ -147,7 +203,21 @@ func (s *Service) Describe(revisionID string, request Scope) (Descriptor, error)
 	if !ok || !s.visible(doc, request) {
 		return Descriptor{}, fmt.Errorf("capability revision not found in scope")
 	}
-	return descriptorFromDocument(doc, s.ScopeForDocument(doc)), nil
+	return s.descriptorForDocument(doc), nil
+}
+
+// DescribeDetail progressively discloses kind-specific detail only after an
+// explicit revision has been selected and re-authorized for the same scope.
+func (s *Service) DescribeDetail(revisionID string, request Scope) (Detail, error) {
+	descriptor, err := s.Describe(revisionID, request)
+	if err != nil {
+		return Detail{}, err
+	}
+	if detail, ok := s.details[revisionID]; ok {
+		detail.Descriptor = descriptor
+		return detail, nil
+	}
+	return Detail{Descriptor: descriptor}, nil
 }
 
 func descriptorFromDocument(doc search.Document, scope Scope) Descriptor {

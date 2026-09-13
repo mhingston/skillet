@@ -16,12 +16,13 @@ import (
 const DefaultMinimumPollInterval = time.Minute
 
 type Config struct {
-	Server       Server       `yaml:"server"`
-	Organization Organization `yaml:"organization"`
-	Auth         Auth         `yaml:"auth"`
-	Packages     Packages     `yaml:"packages"`
-	Search       Search       `yaml:"search"`
-	Repositories []Repository `yaml:"repositories"`
+	Server            Server             `yaml:"server"`
+	Organization      Organization       `yaml:"organization"`
+	Auth              Auth               `yaml:"auth"`
+	Packages          Packages           `yaml:"packages"`
+	Search            Search             `yaml:"search"`
+	Repositories      []Repository       `yaml:"repositories"`
+	MCPToolCatalogues []MCPToolCatalogue `yaml:"mcp_tool_catalogues"`
 }
 
 type Server struct {
@@ -104,6 +105,16 @@ type Repository struct {
 	Exclude           []string        `yaml:"exclude"`
 	SearchExclusions  []MetadataRule  `yaml:"search_exclusions"`
 	CapabilityScope   CapabilityScope `yaml:"capability_scope"`
+}
+
+// MCPToolCatalogue points at a deterministic local metadata snapshot. Skillet
+// reads metadata only: this configuration intentionally has no endpoint token,
+// delegated credential, or execution setting.
+type MCPToolCatalogue struct {
+	ID              string          `yaml:"id"`
+	Path            string          `yaml:"path"`
+	TrustLevel      string          `yaml:"trust_level"`
+	CapabilityScope CapabilityScope `yaml:"capability_scope"`
 }
 
 func Load(path string) (Config, error) {
@@ -287,6 +298,27 @@ func (c *Config) Validate() error {
 		r.PollInterval = d
 		if r.TrustLevel == "" {
 			r.TrustLevel = "approved"
+		}
+	}
+
+	catalogueIDs := map[string]bool{}
+	for i := range c.MCPToolCatalogues {
+		catalogue := &c.MCPToolCatalogues[i]
+		if catalogue.ID == "" {
+			return fmt.Errorf("mcp_tool_catalogues[%d].id is required", i)
+		}
+		if seen[catalogue.ID] || catalogueIDs[catalogue.ID] {
+			return fmt.Errorf("mcp_tool_catalogues[%d].id duplicates routing source %q", i, catalogue.ID)
+		}
+		catalogueIDs[catalogue.ID] = true
+		if catalogue.Path == "" {
+			return fmt.Errorf("mcp_tool_catalogues[%d].path is required", i)
+		}
+		if catalogue.CapabilityScope.Repository != "" && catalogue.CapabilityScope.Namespace == "" {
+			return fmt.Errorf("mcp_tool_catalogues[%d].capability_scope.repository requires namespace", i)
+		}
+		if catalogue.TrustLevel == "" {
+			catalogue.TrustLevel = "approved"
 		}
 	}
 	return nil

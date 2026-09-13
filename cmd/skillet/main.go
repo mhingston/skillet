@@ -92,14 +92,19 @@ func main() {
 		slog.Error("load search index failed", "error", err)
 		os.Exit(2)
 	}
+	toolCapabilities, err := loadConfiguredMCPToolCapabilities(c)
+	if err != nil {
+		slog.Error("MCP tool catalogue configuration failed", "error", err)
+		os.Exit(2)
+	}
 	capabilityIndex := index
-	if hasScopedCapabilitySources(c.Repositories) {
+	if hasScopedCapabilitySources(c.Repositories) || len(toolCapabilities.Documents) > 0 {
 		capabilityIndex, err = search.New(embedder)
 		if err != nil {
 			slog.Error("capability search index failed", "error", err)
 			os.Exit(2)
 		}
-		if err := capabilityIndex.Rebuild(docs); err != nil {
+		if err := capabilityIndex.Rebuild(capabilityRoutingDocuments(docs, toolCapabilities.Documents)); err != nil {
 			slog.Error("capability index document failed", "error", err)
 			os.Exit(2)
 		}
@@ -108,7 +113,7 @@ func main() {
 		slog.Error("index document failed", "error", err)
 		os.Exit(2)
 	}
-	capabilityService, err := configuredCapabilityService(capabilityIndex, c)
+	capabilityService, err := configuredCapabilityService(capabilityIndex, c, toolCapabilities)
 	if err != nil {
 		slog.Error("capability configuration failed", "error", err)
 		os.Exit(2)
@@ -296,7 +301,7 @@ func main() {
 						if run.Outcome == polling.Synchronized {
 							if refreshed, refreshErr := catalog.RoutingDocuments(ctx, c.Organization.ID, c.Search.SearchableMetadataKeys); refreshErr == nil {
 								if capabilityIndex != index {
-									_ = capabilityIndex.Rebuild(refreshed)
+									_ = capabilityIndex.Rebuild(capabilityRoutingDocuments(refreshed, toolCapabilities.Documents))
 									_ = index.Rebuild(legacyRoutingDocuments(refreshed, c.Repositories))
 								} else {
 									_ = index.Rebuild(refreshed)
