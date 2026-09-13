@@ -99,8 +99,7 @@ flowchart TD
     KNOW --> RET
 
     CAP --> MAT[Existing materialisation / lock / package boundary]
-    EVID --> PROV[Immutable provenance validation]
-    MAT --> PROV
+    EVID -->|validate immutable references| MAT
 
     CAPING[Capability ingestion adapters] --> CAP
     KNOWING[Knowledge ingestion adapters] --> KNOW
@@ -113,11 +112,14 @@ flowchart TD
     VERIFY -. exercises .-> EVID
 ```
 
+This is the target steady-state dependency graph, not an additional issue-ordering constraint. Until `internal/governance` exists, current auth/config/catalogue policy remains the compatibility implementation. In particular #34/#35 do not wait for #36/#38 and must not invent a second competing governance model merely to satisfy the target graph.
+
 The important constraints are the arrow directions:
 
 - capability and knowledge do not import one another;
 - retrieval mechanics do not import either domain;
 - transport does not become the owner of ranking or lifecycle rules;
+- evidence validates immutable references against the existing materialisation/catalogue contract rather than introducing a second provenance authority;
 - evidence may reference immutable capability provenance but capability discovery does not depend on evidence-derived quality/ranking in M1;
 - governance state constrains visibility/lifecycle but does not derive semantic relevance;
 - no production module depends on Skilly or Raggle.
