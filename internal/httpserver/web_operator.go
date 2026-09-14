@@ -32,18 +32,18 @@ type webOperatorHealth struct {
 }
 
 type webOperatorPage struct {
-	Title                 string
-	Identity              webIdentity
-	Snapshot              catalogue.OperatorSnapshot
-	AuditExport           catalogue.AuditExportStatus
-	Health                webOperatorHealth
-	AuthorizationMode     string
-	CapabilityConfigured  bool
-	KnowledgeConfigured   bool
-	CanAuditProbe         bool
-	CSRFToken             string
-	Notice                string
-	Error                 string
+	Title                string
+	Identity             webIdentity
+	Snapshot             catalogue.OperatorSnapshot
+	AuditExport          catalogue.AuditExportStatus
+	Health               webOperatorHealth
+	AuthorizationMode    string
+	CapabilityConfigured bool
+	KnowledgeConfigured  bool
+	CanAuditProbe        bool
+	CSRFToken            string
+	Notice               string
+	Error                string
 }
 
 func (s *Server) addOperatorRoutes(mux *http.ServeMux) {
@@ -54,6 +54,7 @@ func (s *Server) addOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /ui/operator/audit-probe", s.webOperatorAuditProbe)
 	s.addCompositionWebRoutes(mux)
 	s.addDistributionRoutes(mux)
+	s.addCollaborationRoutes(mux)
 }
 
 func (s *Server) webOperator(w http.ResponseWriter, r *http.Request) {
