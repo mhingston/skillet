@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -49,6 +50,7 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 	writeCompositionSkill(t, repositoryRoot, "review-root", "root review capability", "2.0.0", map[string]string{
 		composition.MetadataRequires: `[{"id":"demo/central/review-base","version":"^1.0.0"}]`,
 		composition.MetadataRecommends: `[{"id":"demo/central/optional-context"}]`,
+		composition.MetadataConflicts: `[{"id":"demo/central/optional-context"}]`,
 	})
 	writeCompositionSkill(t, repositoryRoot, "optional-context", "optional context capability", "1.0.0", nil)
 	result := syncM1Repository(t, ctx, repositoryRoot, "central", catalog, packages)
@@ -56,6 +58,14 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 
 	docs, err := catalog.RoutingDocuments(ctx, "demo")
 	if err != nil { t.Fatal(err) }
+	rootRevisionID := ""
+	for _, doc := range docs {
+		if doc.SkillID == "demo/central/review-root" {
+			rootRevisionID = doc.ID
+			break
+		}
+	}
+	if rootRevisionID == "" { t.Fatal("review-root revision missing from routing documents") }
 	index, err := search.New(nil)
 	if err != nil { t.Fatal(err) }
 	if err := index.Rebuild(docs); err != nil { t.Fatal(err) }
@@ -83,6 +93,17 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 		if readErr != nil { t.Fatal(readErr) }
 		return resp.StatusCode, string(body)
 	}
+
+	t.Run("capability_detail_shows_declared_composition", func(t *testing.T) {
+		status, body := get("/ui/catalogue/" + url.PathEscape(rootRevisionID))
+		if status != http.StatusOK { t.Fatalf("status=%d body=%s", status, body) }
+		for _, want := range []string{
+			composition.MetadataRequires, "demo/central/review-base",
+			composition.MetadataRecommends, composition.MetadataConflicts, "demo/central/optional-context",
+		} {
+			if !strings.Contains(body, want) { t.Fatalf("capability detail missing %q in %s", want, body) }
+		}
+	})
 
 	t.Run("valid_plan_preview", func(t *testing.T) {
 		status, body := get("/ui/composition/preview?collection=review-kit")
