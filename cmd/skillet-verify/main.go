@@ -51,6 +51,7 @@ type verificationReport struct {
 	CapabilityEvalReport       string                    `json:"capability_eval_report,omitempty"`
 	KnowledgeEvalReport        string                    `json:"knowledge_eval_report,omitempty"`
 	EnterpriseAcceptanceReport string                    `json:"enterprise_acceptance_report,omitempty"`
+	M3AcceptanceReport         string                    `json:"m3_acceptance_report,omitempty"`
 }
 
 func main() {
@@ -69,6 +70,7 @@ func main() {
 	capabilityEvalPath := filepath.Join(*reportDir, "capability-retrieval.json")
 	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
 	enterpriseAcceptancePath := filepath.Join(*reportDir, "enterprise-acceptance.json")
+	m3AcceptancePath := filepath.Join(*reportDir, "m3-acceptance.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
 
 	commands := []struct {
@@ -88,19 +90,30 @@ func main() {
 		{name: "enterprise-static-development-regression", args: []string{"go", "test", "./internal/httpserver", "-run", "^(TestAuthMiddlewarePreservesTrustedValidatorIdentity|TestAuthMiddlewareLegacyStaticPathSynthesizesIdentity|TestDevelopmentModeDoesNotInventTrustedIdentity)$", "-count=1"}},
 		{name: "enterprise-ranking-isolation", args: []string{"go", "test", "./internal/httpserver", "-run", "^TestClaimsAuthorizationFiltersLegacySearchAfterRanking$", "-count=1"}},
 		{name: "enterprise-audit-degradation", args: []string{"go", "test", "./internal/catalogue", "-run", "^TestAuditExporterFailureCannotRollbackAuthoritativeState$", "-count=1"}},
+		{name: "m3-browser-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^(TestOfflineM3BrowserAcceptance|TestM3BrowserAssetsRemainLocalAndPinned)$", "-count=1"}},
+		{name: "m3-browser-driver-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineM3BrowserProcessAcceptance$", "-skillet-browser-process", "-count=1"}},
+		{name: "m3-composition-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestCompositionBrowserAcceptance$", "-count=1"}},
+		{name: "m3-composition-invariants", args: []string{"go", "test", "./internal/composition", "-run", "^(TestResolveSingleAndTransitiveDependencies|TestResolveCompatibleRangesBacktracksToHighestCommonVersion|TestResolveUnsatisfiableRanges|TestResolveCycle|TestResolveExplicitConflict|TestResolveYankedOrInaccessibleFailsClosed|TestResolveCollectionExpansion|TestResolutionLocksImmutableDigestsAndIsDeterministic|TestExactLockedRevisionDoesNotFollowNewerRevision)$", "-count=1"}},
+		{name: "m3-distribution-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestDistributionBrowserAcceptance$", "-count=1"}},
+		{name: "m3-distribution-profile", args: []string{"go", "test", "./internal/distribution", "-run", "^(TestBuildClaudeCodeMarketplaceDeterministicAndPinned|TestBuildClaudeCodeMarketplaceMatchesHostCompatibilityFixture|TestBuildClaudeCodeMarketplaceSourceUpdateChangesOnlyPinnedProvenance|TestBuildClaudeCodeMarketplaceFiltersYankedAndIsolatesInvalidSources)$", "-count=1"}},
+		{name: "m3-collaboration-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestM36CollaborationBrowserWorkflow$", "-count=1"}},
+		{name: "m3-evidence-loop-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestEvidenceToImprovementCandidateWorkflowIsReviewOnlyAndDeterministic$", "-count=1"}},
+		{name: "m3-proposal-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestM37ReviewableImprovementProposalWorkflow$", "-count=1"}},
+		{name: "m3-operator-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineM3OperatorAcceptance$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
 		{name: "capability-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-capability-eval", "--fixtures", *capabilityFixturePath, "--report", capabilityEvalPath}},
 		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--baseline", *knowledgeBaselinePath, "--report", knowledgeEvalPath}},
 	}
 
 	report := verificationReport{
-		SchemaVersion: 2,
-		Suite:         "vnext-m1-deterministic",
-		Passed:        true,
+		SchemaVersion:              3,
+		Suite:                      "vnext-m1-m2-m3-deterministic",
+		Passed:                     true,
 		EvalReport:                 filepath.ToSlash(rawEvalPath),
 		CapabilityEvalReport:       filepath.ToSlash(capabilityEvalPath),
 		KnowledgeEvalReport:        filepath.ToSlash(knowledgeEvalPath),
 		EnterpriseAcceptanceReport: filepath.ToSlash(enterpriseAcceptancePath),
+		M3AcceptanceReport:         filepath.ToSlash(m3AcceptancePath),
 	}
 	m1Passed := false
 	for _, command := range commands {
@@ -123,6 +136,7 @@ func main() {
 		report.Journeys = append(report.Journeys, journeyResult{Name: name, Passed: m1Passed})
 	}
 
+	enterprisePassed := false
 	enterprisePassed, err := writeEnterpriseAcceptanceReport(enterpriseAcceptancePath, report.Steps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "skillet-verify: enterprise acceptance report:", err)
@@ -165,6 +179,20 @@ func main() {
 		report.Passed = false
 	} else {
 		appendMetrics(&report, knowledgeMetrics)
+	}
+
+	m3Report, err := writeM3AcceptanceReport(m3AcceptancePath, report.Steps, report.Metrics, enterprisePassed)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "skillet-verify: M3 acceptance report:", err)
+		report.Passed = false
+	} else {
+		for _, journey := range m3Report.Journeys {
+			report.Journeys = append(report.Journeys, journeyResult{Name: journey.Name, Passed: journey.Passed})
+		}
+		if !m3Report.Passed {
+			report.Passed = false
+		}
+		fmt.Printf("M3 acceptance report: %s\n", m3AcceptancePath)
 	}
 
 	contents, err := json.MarshalIndent(report, "", "  ")
