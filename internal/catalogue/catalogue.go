@@ -32,8 +32,9 @@ type Admission struct {
 }
 
 type Store struct {
-	DB       *sql.DB
-	Packages *packagestore.Store
+	DB            *sql.DB
+	Packages      *packagestore.Store
+	auditExporter AuditExporter
 }
 
 func (s *Store) RecordAudit(ctx context.Context, organizationID, eventType string, details any) error {
@@ -56,8 +57,23 @@ func (s *Store) RecordAudit(ctx context.Context, organizationID, eventType strin
 			}
 		}
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO audit_events(organization_id, actor_type, actor_id, event_type, repository_id, skill_id, revision_id, request_id, details_json, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, organizationID, values["actor_type"], values["actor_id"], eventType, values["repository_id"], values["skill_id"], values["revision_id"], values["request_id"], payload, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
+	occurredAt := time.Now().UTC()
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO audit_events(organization_id, actor_type, actor_id, event_type, repository_id, skill_id, revision_id, request_id, details_json, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, organizationID, values["actor_type"], values["actor_id"], eventType, values["repository_id"], values["skill_id"], values["revision_id"], values["request_id"], payload, occurredAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	s.exportAudit(ctx, pendingAudit{
+		organizationID: organizationID,
+		eventType:      eventType,
+		occurredAt:     occurredAt,
+		actorType:      values["actor_type"],
+		actorID:        values["actor_id"],
+		repositoryID:   values["repository_id"],
+		skillID:        values["skill_id"],
+		revisionID:     values["revision_id"],
+		requestID:      values["request_id"],
+	})
+	return nil
 }
 
 func New(db *sql.DB, packages ...*packagestore.Store) *Store {
@@ -143,6 +159,7 @@ func (s *Store) admitBatch(ctx context.Context, repo Repository, admissions []Ad
 	}
 	defer tx.Rollback()
 	results := make([]Revision, 0, len(admissions))
+	auditExports := make([]pendingAudit, 0, len(admissions)*2)
 	for _, admission := range admissions {
 		skill := admission.Skill
 		commitSHA, treeSHA, packages := admission.CommitSHA, admission.TreeSHA, admission.Packages
@@ -174,16 +191,20 @@ func (s *Store) admitBatch(ctx context.Context, repo Repository, admissions []Ad
 			if _, err = tx.ExecContext(ctx, `UPDATE skill_revisions SET state='superseded' WHERE id=?`, prior); err != nil {
 				return nil, err
 			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, skill_id, revision_id, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?, ?, ?)`, repo.OrganizationID, skillID, revisionID, `{"previous_revision_id":"`+prior+`"}`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			occurredAt := time.Now().UTC()
+			if _, err = tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, skill_id, revision_id, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?, ?, ?)`, repo.OrganizationID, skillID, revisionID, `{"previous_revision_id":"`+prior+`"}`, occurredAt.Format(time.RFC3339Nano)); err != nil {
 				return nil, err
 			}
+			auditExports = append(auditExports, pendingAudit{organizationID: repo.OrganizationID, eventType: "active_revision_changed", occurredAt: occurredAt, repositoryID: repoKey, skillID: skillID, revisionID: revisionID})
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE skills SET active_revision_id=? WHERE id=?`, revisionID, skillID); err != nil {
 			return nil, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, details_json, occurred_at) VALUES (?, 'skill_admitted', ?, ?)`, repo.OrganizationID, string(validation), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		occurredAt := time.Now().UTC()
+		if _, err = tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, details_json, occurred_at) VALUES (?, 'skill_admitted', ?, ?)`, repo.OrganizationID, string(validation), occurredAt.Format(time.RFC3339Nano)); err != nil {
 			return nil, err
 		}
+		auditExports = append(auditExports, pendingAudit{organizationID: repo.OrganizationID, eventType: "skill_admitted", occurredAt: occurredAt, repositoryID: repoKey, skillID: skillID, revisionID: revisionID})
 		results = append(results, Revision{ID: revisionID, SkillID: skillID, CommitSHA: commitSHA, TreeSHA: treeSHA, Version: skill.Version, ArchiveSHA256TarGZ: packages.TarGZ, ArchiveSHA256ZIP: packages.ZIP, State: "active", ValidationResult: skill.Findings})
 	}
 	if presentPaths != nil {
@@ -207,9 +228,11 @@ func (s *Store) admitBatch(ctx context.Context, repo Repository, admissions []Ad
 				return nil, err
 			}
 			details, _ := json.Marshal(map[string]string{"skill_id": skillID, "reason": "removed_from_source"})
-			if _, err := tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, skill_id, revision_id, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?, ?, ?)`, repo.OrganizationID, skillID, revisionID, string(details), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			occurredAt := time.Now().UTC()
+			if _, err := tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, skill_id, revision_id, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?, ?, ?)`, repo.OrganizationID, skillID, revisionID, string(details), occurredAt.Format(time.RFC3339Nano)); err != nil {
 				return nil, err
 			}
+			auditExports = append(auditExports, pendingAudit{organizationID: repo.OrganizationID, eventType: "active_revision_changed", occurredAt: occurredAt, repositoryID: repoKey, skillID: skillID, revisionID: revisionID})
 		}
 		if err := rows.Err(); err != nil {
 			return nil, err
@@ -218,6 +241,7 @@ func (s *Store) admitBatch(ctx context.Context, repo Repository, admissions []Ad
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.exportAudits(ctx, auditExports)
 	return results, nil
 }
 
@@ -256,10 +280,15 @@ func (s *Store) RecordQuarantine(ctx context.Context, repo Repository, skill dis
 	if _, err = tx.ExecContext(ctx, `INSERT INTO skill_revisions(id, skill_id, commit_sha, tree_sha, version, name, description, metadata_json, state, validation_result_json) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, 'quarantined', ?) ON CONFLICT(id) DO NOTHING`, revisionID, skillID, commitSHA, treeSHA, skill.Version, skill.Frontmatter.Name, skill.Frontmatter.Description, string(metadata), string(findings)); err != nil {
 		return err
 	}
+	occurredAt := time.Now().UTC()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, details_json) VALUES (?, 'skill_quarantined', ?)`, repo.OrganizationID, string(findings)); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	s.exportAudit(ctx, pendingAudit{organizationID: repo.OrganizationID, eventType: "skill_quarantined", occurredAt: occurredAt, repositoryID: repoKey, skillID: skillID, revisionID: revisionID})
+	return nil
 }
 
 // MarkMissingFromSource removes active visibility for skills that were absent
@@ -294,6 +323,7 @@ func (s *Store) MarkMissingFromSource(ctx context.Context, repo Repository, pres
 		return err
 	}
 	defer tx.Rollback()
+	auditExports := make([]pendingAudit, 0, len(missing))
 	for _, item := range missing {
 		if _, err := tx.ExecContext(ctx, `UPDATE skill_revisions SET state='removed_from_source' WHERE id=? AND state='active'`, item.revision); err != nil {
 			return err
@@ -301,11 +331,17 @@ func (s *Store) MarkMissingFromSource(ctx context.Context, repo Repository, pres
 		if _, err := tx.ExecContext(ctx, `UPDATE skills SET active_revision_id=NULL WHERE id=?`, item.id); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?)`, repo.OrganizationID, `{"skill_id":"`+item.id+`","reason":"removed_from_source"}`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		occurredAt := time.Now().UTC()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO audit_events(organization_id, event_type, details_json, occurred_at) VALUES (?, 'active_revision_changed', ?, ?)`, repo.OrganizationID, `{"skill_id":"`+item.id+`","reason":"removed_from_source"}`, occurredAt.Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
+		auditExports = append(auditExports, pendingAudit{organizationID: repo.OrganizationID, eventType: "active_revision_changed", occurredAt: occurredAt, repositoryID: repoKey, skillID: item.id, revisionID: item.revision})
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	s.exportAudits(ctx, auditExports)
+	return nil
 }
 
 func (s *Store) RoutingDocuments(ctx context.Context, organizationID string, searchableMetadataKeys ...[]string) ([]search.Document, error) {
