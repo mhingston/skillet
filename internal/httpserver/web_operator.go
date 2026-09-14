@@ -55,6 +55,7 @@ func (s *Server) addOperatorRoutes(mux *http.ServeMux) {
 	s.addCompositionWebRoutes(mux)
 	s.addDistributionRoutes(mux)
 	s.addCollaborationRoutes(mux)
+	s.addProposalRoutes(mux)
 }
 
 func (s *Server) webOperator(w http.ResponseWriter, r *http.Request) {
