@@ -78,14 +78,14 @@ func (s *Server) recordRevisionLineageTool(ctx context.Context, _ *mcp.CallToolR
 		return nil, lineage.Entry{}, err
 	}
 	entry, err := store.Record(ctx, lineage.RecordInput{
-		OrganizationID:  organizationID,
-		ActorID:         actorID,
-		CorrelationID:   strings.TrimSpace(input.CorrelationID),
+		OrganizationID:   organizationID,
+		ActorID:          actorID,
+		CorrelationID:    strings.TrimSpace(input.CorrelationID),
 		ParentRevisionID: input.ParentRevisionID,
-		DescendantKind:  strings.TrimSpace(input.DescendantKind),
-		DescendantID:    strings.TrimSpace(input.DescendantID),
-		Relationship:    strings.TrimSpace(input.Relationship),
-		ExperimentIDs:   input.ExperimentIDs,
+		DescendantKind:   strings.TrimSpace(input.DescendantKind),
+		DescendantID:     strings.TrimSpace(input.DescendantID),
+		Relationship:     strings.TrimSpace(input.Relationship),
+		ExperimentIDs:    input.ExperimentIDs,
 	})
 	if err != nil {
 		return nil, lineage.Entry{}, err
@@ -134,7 +134,7 @@ func (s *Server) recordLineageDecisionTool(ctx context.Context, _ *mcp.CallToolR
 	if err := s.recordAudit(ctx, organizationID, "improvement_lineage_decision_recorded", map[string]any{
 		"actor_type": "agent_or_human", "actor_id": actorID, "skill_id": entry.Record.CapabilityID,
 		"revision_id": entry.Record.ParentRevisionID, "lineage_id": entry.Record.ID,
-		"decision": entry.Decision.State, "decision_reference": entry.Decision.Reference,
+		"decision": entry.Decision.State, "decision_id": entry.Decision.ID,
 		"request_id": strings.TrimSpace(input.CorrelationID),
 	}); err != nil {
 		return nil, lineage.Entry{}, err
