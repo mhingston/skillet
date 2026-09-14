@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	authz "github.com/mhingston/skillet/internal/authorization"
+	"github.com/mhingston/skillet/internal/fitness"
 	"github.com/mhingston/skillet/internal/improver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -39,22 +40,13 @@ type improverProvenanceInput struct {
 }
 
 type createImproverMetaEvalInput struct {
-	Name              string                   `json:"name" jsonschema:"Explicit protected meta-eval distribution name"`
-	Version           string                   `json:"version" jsonschema:"Explicit immutable meta-eval version"`
-	DevelopmentScopes []improverEvalScopeAlias `json:"development_scopes" jsonschema:"Exact development eval-suite/task-distribution identities and versions"`
-	HeldOutScopes     []improverEvalScopeAlias `json:"held_out_scopes" jsonschema:"Exact protected held-out eval-suite/task-distribution identities and versions"`
-	UsefulMetric      improver.MetricSelector  `json:"useful_metric" jsonschema:"Named metric whose direction defines useful improvement within this meta-eval only"`
-	Budget            improver.BudgetGuard     `json:"budget,omitempty" jsonschema:"Optional named cost/runtime budget guard; metrics remain separate"`
-	CorrelationID     string                   `json:"correlation_id,omitempty" jsonschema:"Optional caller correlation identifier"`
-}
-
-// Alias keeps MCP input schemas transport-local while preserving the exact
-// fitness scope shape in the domain conversion below.
-type improverEvalScopeAlias struct {
-	EvalSuiteID             string `json:"eval_suite_id"`
-	EvalSuiteVersion        string `json:"eval_suite_version"`
-	TaskDistributionID      string `json:"task_distribution_id"`
-	TaskDistributionVersion string `json:"task_distribution_version"`
+	Name              string              `json:"name" jsonschema:"Explicit protected meta-eval distribution name"`
+	Version           string              `json:"version" jsonschema:"Explicit immutable meta-eval version"`
+	DevelopmentScopes []fitness.EvalScope `json:"development_scopes" jsonschema:"Exact development eval-suite/task-distribution identities and versions"`
+	HeldOutScopes     []fitness.EvalScope `json:"held_out_scopes" jsonschema:"Exact protected held-out eval-suite/task-distribution identities and versions"`
+	UsefulMetric      improver.MetricSelector `json:"useful_metric" jsonschema:"Named metric whose direction defines useful improvement within this meta-eval only"`
+	Budget            improver.BudgetGuard    `json:"budget,omitempty" jsonschema:"Optional named cost/runtime budget guard; metrics remain separate"`
+	CorrelationID     string                  `json:"correlation_id,omitempty" jsonschema:"Optional caller correlation identifier"`
 }
 
 type improverMetaEvalIDInput struct {
@@ -62,9 +54,9 @@ type improverMetaEvalIDInput struct {
 }
 
 type evaluateImproverStrategiesInput struct {
-	DefinitionID string                           `json:"definition_id" jsonschema:"Immutable protected meta-eval definition identifier"`
-	Samples      []improver.EvaluationSampleInput `json:"samples" jsonschema:"Bounded experiment samples with development/held-out fitness comparisons and optional lineage decisions"`
-	CorrelationID string                          `json:"correlation_id,omitempty" jsonschema:"Optional caller correlation identifier"`
+	DefinitionID  string                           `json:"definition_id" jsonschema:"Immutable protected meta-eval definition identifier"`
+	Samples       []improver.EvaluationSampleInput `json:"samples" jsonschema:"Bounded experiment samples with development/held-out fitness comparisons and optional lineage decisions"`
+	CorrelationID string                           `json:"correlation_id,omitempty" jsonschema:"Optional caller correlation identifier"`
 }
 
 type improverMetaEvaluationIDInput struct {
@@ -75,30 +67,12 @@ func addImproverTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil || app.catalogue == nil || !improverMetaEvalEnabled() {
 		return
 	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "record_improver_provenance",
-		Description: "Record immutable evidence about the agent/harness/model/prompt/tools and candidate-generation strategy that produced one experiment candidate. Missing/redacted fields remain explicit and raw strategy config is never persisted.",
-	}, app.recordImproverProvenanceTool)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_improver_provenance",
-		Description: "Read improver provenance for one experiment. If none was captured, returns explicit missing provenance rather than guessing values.",
-	}, app.getImproverProvenanceTool)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "create_improver_meta_eval",
-		Description: "Create an immutable protected meta-eval definition with exact development and held-out task/eval distributions, one named useful metric, and optional bounded cost/runtime guards.",
-	}, app.createImproverMetaEvalTool)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_improver_meta_eval",
-		Description: "Read one immutable protected improver meta-eval definition.",
-	}, app.getImproverMetaEvalTool)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "evaluate_improver_strategies",
-		Description: "Aggregate comparable experiment, lineage, and scoped-fitness evidence by exact improver strategy/config under one protected meta-eval. Produces scoped evidence only, never a universal improver score or automatic promotion.",
-	}, app.evaluateImproverStrategiesTool)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_improver_meta_evaluation",
-		Description: "Read one immutable strategy meta-evaluation with acceptance/failure, protected gain, cost/runtime, bounded-budget, and held-out evidence views.",
-	}, app.getImproverMetaEvaluationTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "record_improver_provenance", Description: "Record immutable evidence about the agent/harness/model/prompt/tools and candidate-generation strategy that produced one experiment candidate. Missing/redacted fields remain explicit and raw strategy config is never persisted."}, app.recordImproverProvenanceTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "get_improver_provenance", Description: "Read improver provenance for one experiment. If none was captured, returns explicit missing provenance rather than guessing values."}, app.getImproverProvenanceTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "create_improver_meta_eval", Description: "Create an immutable protected meta-eval definition with exact development and held-out task/eval distributions, one named useful metric, and optional bounded cost/runtime guards."}, app.createImproverMetaEvalTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "get_improver_meta_eval", Description: "Read one immutable protected improver meta-eval definition."}, app.getImproverMetaEvalTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "evaluate_improver_strategies", Description: "Aggregate comparable experiment, lineage, and scoped-fitness evidence by exact improver strategy/config under one protected meta-eval. Produces scoped evidence only, never a universal improver score or automatic promotion."}, app.evaluateImproverStrategiesTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "get_improver_meta_evaluation", Description: "Read one immutable strategy meta-evaluation with acceptance/failure, protected gain, cost/runtime, bounded-budget, and held-out evidence views."}, app.getImproverMetaEvaluationTool)
 }
 
 func improverMetaEvalEnabled() bool {
@@ -173,7 +147,7 @@ func (s *Server) createImproverMetaEvalTool(ctx context.Context, _ *mcp.CallTool
 	}
 	item, err := store.CreateMetaEvalDefinition(ctx, improver.CreateMetaEvalDefinitionInput{
 		OrganizationID: organizationID, ActorID: actorID, CorrelationID: strings.TrimSpace(input.CorrelationID),
-		Name: input.Name, Version: input.Version, DevelopmentScopes: toImproverScopes(input.DevelopmentScopes), HeldOutScopes: toImproverScopes(input.HeldOutScopes),
+		Name: input.Name, Version: input.Version, DevelopmentScopes: input.DevelopmentScopes, HeldOutScopes: input.HeldOutScopes,
 		UsefulMetric: input.UsefulMetric, Budget: input.Budget,
 	})
 	if err != nil {
@@ -277,18 +251,3 @@ func (s *Server) improverStore(ctx context.Context) (*improver.Store, error) {
 	}
 	return resolved, nil
 }
-
-func toImproverScopes(input []improverEvalScopeAlias) []fitnessScopeAliasTarget {
-	out := make([]fitnessScopeAliasTarget, 0, len(input))
-	for _, scope := range input {
-		out = append(out, fitnessScopeAliasTarget{
-			EvalSuiteID: scope.EvalSuiteID, EvalSuiteVersion: scope.EvalSuiteVersion,
-			TaskDistributionID: scope.TaskDistributionID, TaskDistributionVersion: scope.TaskDistributionVersion,
-		})
-	}
-	return out
-}
-
-// fitnessScopeAliasTarget is an exact alias of fitness.EvalScope, declared via a
-// type alias below to avoid exposing a second domain representation.
-type fitnessScopeAliasTarget = fitness.EvalScope
