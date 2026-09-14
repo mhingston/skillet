@@ -31,11 +31,12 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil {
 		return
 	}
-	// Capability, evidence, and knowledge are separate domains but share this
-	// bounded MCP transport composition point. Evidence derivation depends only
-	// on the existing catalogue/materialisation provenance boundary and remains
-	// read-only; capability registration does not depend on knowledge being set.
+	// Capability, deterministic composition, evidence, and knowledge are
+	// separate domains but share this bounded MCP transport composition point.
+	// Composition is read-only planning: it never executes or activates a
+	// capability and it does not depend on knowledge retrieval.
 	addCapabilityTools(server, app)
+	addCompositionTools(server, app)
 	addEvidenceTools(server, app)
 	value, ok := knowledgeServices.Load(app)
 	if !ok {
