@@ -165,7 +165,7 @@ func (s *Server) authorizedMaterializeTool(ctx context.Context, req *mcp.CallToo
 		if err := s.authorizeCapabilityMaterialization(ctx, organizationID, info); err != nil {
 			return nil, materializeOutput{}, err
 		}
-		return s.materializeTool(ctx, req, input)
+		return s.materializeAuthorizedRevision(ctx, req, input, info)
 	}
 
 	var revisionID string
@@ -192,7 +192,7 @@ func (s *Server) authorizedMaterializeTool(ctx context.Context, req *mcp.CallToo
 	if err := s.authorizeCapabilityMaterialization(ctx, organizationID, info); err != nil {
 		return nil, materializeOutput{}, err
 	}
-	return s.materializeTool(ctx, req, input)
+	return s.materializeAuthorizedRevision(ctx, req, input, info)
 }
 
 // Compile-time guard: wrappers intentionally retain the existing signed
