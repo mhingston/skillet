@@ -17,6 +17,32 @@ func (s *Service) ScopeForRevision(revisionID string) (Scope, bool) {
 	return s.ScopeForDocument(doc), true
 }
 
+// ScopeForIdentity resolves the authoritative current scope for one stable
+// capability identity. If duplicate routing documents disagree on scope it
+// fails closed rather than selecting one arbitrarily.
+func (s *Service) ScopeForIdentity(identityID string) (Scope, bool) {
+	if s == nil || s.index == nil || strings.TrimSpace(identityID) == "" {
+		return Scope{}, false
+	}
+	var resolved Scope
+	found := false
+	for _, doc := range s.index.Documents() {
+		if doc.SkillID != identityID {
+			continue
+		}
+		scope := s.ScopeForDocument(doc)
+		if !found {
+			resolved = scope
+			found = true
+			continue
+		}
+		if scope != resolved {
+			return Scope{}, false
+		}
+	}
+	return resolved, found
+}
+
 // ScopeForRepository returns the configured scope for a source repository even
 // when the requested immutable revision is retained history and no longer lives
 // in the current routing index. Catalogue repository IDs may be stored as
