@@ -23,7 +23,7 @@ type DeterministicCI struct {
 	PrivateKey ed25519.PrivateKey
 }
 
-func (a DeterministicCI) Accepted(dispatch runner.Dispatch) (runner.StatusEnvelope, error) {
+func (a DeterministicCI) Accepted(dispatch runner.Dispatch, dispatchSHA256 string) (runner.StatusEnvelope, error) {
 	if err := validateDispatch(dispatch); err != nil {
 		return runner.StatusEnvelope{}, err
 	}
@@ -36,13 +36,14 @@ func (a DeterministicCI) Accepted(dispatch runner.Dispatch) (runner.StatusEnvelo
 		ExperimentID: dispatch.ExperimentID,
 		SpecRevision: dispatch.SpecRevision,
 		HandoffSHA256: dispatch.HandoffSHA256,
+		DispatchSHA256: dispatchSHA256,
 		Sequence: 1,
 		State: runner.StateAccepted,
 		Message: "deterministic CI fixture accepted bounded validation",
 	})
 }
 
-func (a DeterministicCI) Running(dispatch runner.Dispatch) (runner.StatusEnvelope, error) {
+func (a DeterministicCI) Running(dispatch runner.Dispatch, dispatchSHA256 string) (runner.StatusEnvelope, error) {
 	if err := validateDispatch(dispatch); err != nil {
 		return runner.StatusEnvelope{}, err
 	}
@@ -55,6 +56,7 @@ func (a DeterministicCI) Running(dispatch runner.Dispatch) (runner.StatusEnvelop
 		ExperimentID: dispatch.ExperimentID,
 		SpecRevision: dispatch.SpecRevision,
 		HandoffSHA256: dispatch.HandoffSHA256,
+		DispatchSHA256: dispatchSHA256,
 		Sequence: 2,
 		State: runner.StateRunning,
 		Message: "deterministic CI fixture is evaluating supplied bounded checks",
@@ -149,11 +151,6 @@ func (a DeterministicCI) Cancelled(dispatch runner.Dispatch, dispatchSHA256 stri
 		Summary: "deterministic external CI validation was cancelled",
 		Usage: usage,
 	})
-}
-
-func BindDispatchSHA(status runner.StatusEnvelope, dispatchSHA256 string) runner.StatusEnvelope {
-	status.DispatchSHA256 = dispatchSHA256
-	return status
 }
 
 func validateDispatch(dispatch runner.Dispatch) error {
