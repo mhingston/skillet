@@ -2,6 +2,7 @@ package collaboration
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 
@@ -104,5 +105,5 @@ func seedEvidenceFixture(t *testing.T, ctx context.Context, db execer) {
 }
 
 type execer interface {
-	ExecContext(context.Context, string, ...any) (interface{ LastInsertId() (int64, error); RowsAffected() (int64, error) }, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
