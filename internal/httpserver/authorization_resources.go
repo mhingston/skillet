@@ -70,6 +70,14 @@ func (s *Server) authorizeEvidenceResource(ctx context.Context, action authz.Act
 		} else if resource.ID == "" {
 			resource.ID = revisionID
 		}
+	} else if stableID != "" {
+		if service := configuredCapabilityServiceFor(s); service != nil {
+			if scope, ok := service.ScopeForIdentity(stableID); ok {
+				resource.OrganizationID = scope.Organization
+				resource.Namespace = scope.Namespace
+				resource.Repository = scope.Repository
+			}
+		}
 	}
 	return s.authorize(ctx, action, resource)
 }
