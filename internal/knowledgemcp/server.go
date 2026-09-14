@@ -90,7 +90,7 @@ func AddTools(server *mcp.Server, service *knowledge.Service, authorizers ...Aut
 		}
 		filtered := make([]knowledge.OKFSearchResult, 0, limit)
 		for _, result := range response.Results {
-			if err := authorize(ctx, authz.ActionKnowledgeSearch, authz.Resource{ID: result.Result.ChunkID}); err != nil {
+			if err := authorize(ctx, authz.ActionKnowledgeSearch, authz.Resource{ID: result.Result.DocumentID}); err != nil {
 				continue
 			}
 			filtered = append(filtered, result)
@@ -113,7 +113,11 @@ func AddTools(server *mcp.Server, service *knowledge.Service, authorizers ...Aut
 			return nil, knowledge.OKFRead{}, fmt.Errorf("chunk_id is required")
 		}
 		if authorize != nil {
-			if err := authorize(ctx, authz.ActionKnowledgeRead, authz.Resource{ID: input.ChunkID}); err != nil {
+			documentID, err := service.DocumentIDForChunk(ctx, input.ChunkID)
+			if err != nil {
+				return nil, knowledge.OKFRead{}, err
+			}
+			if err := authorize(ctx, authz.ActionKnowledgeRead, authz.Resource{ID: documentID}); err != nil {
 				return nil, knowledge.OKFRead{}, err
 			}
 		}
