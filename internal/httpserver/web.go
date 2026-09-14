@@ -104,6 +104,7 @@ func (s *Server) addWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ui/catalogue/{revisionID}", s.webCapabilityDetail)
 	mux.HandleFunc("GET /ui/knowledge", s.webKnowledgeSearch)
 	mux.HandleFunc("GET /ui/knowledge/{chunkID}", s.webKnowledgeRead)
+	s.addOperatorRoutes(mux)
 }
 
 func (s *Server) webAssetHandler(assets fs.FS) http.Handler {
