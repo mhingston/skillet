@@ -20,6 +20,9 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 	for _, doc := range []search.Document{
 		{ID: "rev-a", SkillID: "demo/repo-a/release", OrganizationID: "demo", RepositoryID: "repo-a", Name: "release-a", Description: "database migration release checklist", Searchable: true, TrustLevel: "approved"},
 		{ID: "rev-b", SkillID: "demo/repo-b/release", OrganizationID: "demo", RepositoryID: "repo-b", Name: "release-b", Description: "database release rollback checklist", Searchable: true, TrustLevel: "approved"},
+		// Semantically strongest foreign-tenant fixture: organization filtering must
+		// remove it before claims authorization can ever disclose it.
+		{ID: "rev-other", SkillID: "other/repo-a/release", OrganizationID: "other", RepositoryID: "repo-a", Name: "release-other", Description: "database release checklist database release checklist", Searchable: true, TrustLevel: "approved"},
 	} {
 		if err := index.Add(doc); err != nil {
 			t.Fatal(err)
@@ -56,7 +59,12 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(baseline.Candidates) != 2 {
-		t.Fatalf("baseline candidates = %d, want 2", len(baseline.Candidates))
+		t.Fatalf("baseline candidates = %d, want 2 with zero cross-organization leakage", len(baseline.Candidates))
+	}
+	for _, candidate := range baseline.Candidates {
+		if candidate.Skill.OrganizationID != "demo" {
+			t.Fatalf("cross-organization candidate leaked before claims filtering: %+v", candidate.Skill)
+		}
 	}
 	// Select the second-ranked result so removal of an unauthorized higher-ranked
 	// result proves that authorization preserves the surviving semantic evidence.
@@ -104,6 +112,64 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 	missingPermission := withAuthenticatedIdentity(context.Background(), authn.Identity{Subject: "user-2", OrganizationID: "demo"})
 	if _, _, err := s.authorizedSearchTool(missingPermission, nil, input); !errors.Is(err, ErrAuthorizationDenied) {
 		t.Fatalf("missing permission error = %v, want authorization denial", err)
+	}
+}
+
+func TestEvidenceAuthorizationBySkillIDUsesAuthoritativeScope(t *testing.T) {
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := search.Document{
+		ID:             "rev-a",
+		SkillID:        "demo/repo-a/release",
+		OrganizationID: "demo",
+		RepositoryID:   "repo-a",
+		Name:           "release-a",
+		Description:    "release checklist",
+		Searchable:     true,
+		TrustLevel:     "approved",
+	}
+	if err := index.Add(doc); err != nil {
+		t.Fatal(err)
+	}
+	scope, err := capability.NewScope("demo", "engineering", "repo-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := capability.New(index, []capability.SourcePolicy{{RepositoryID: "repo-a", Scope: scope}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	s.ConfigureCapabilities(capabilities)
+	t.Cleanup(func() {
+		s.ConfigureAuthorization(nil)
+		s.ConfigureCapabilities(nil)
+	})
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
+		Permissions: []string{"evidence.reviewer"},
+		Actions:     []authz.Action{authz.ActionEvidenceReview},
+		Resources: []authz.ResourceRule{{
+			Namespace:  "engineering",
+			Repository: "repo-a",
+			IDs:        []string{doc.SkillID},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ConfigureAuthorization(policy)
+	ctx := withAuthenticatedIdentity(context.Background(), authn.Identity{
+		Subject:        "reviewer",
+		OrganizationID: "demo",
+		Permissions:    map[string]struct{}{"evidence.reviewer": {}},
+	})
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, "demo", "", doc.SkillID); err != nil {
+		t.Fatalf("repo-scoped evidence review by stable skill id denied: %v", err)
+	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, "demo", "", "demo/repo-b/release"); !errors.Is(err, ErrAuthorizationDenied) {
+		t.Fatalf("out-of-scope evidence review error = %v, want authorization denial", err)
 	}
 }
 
