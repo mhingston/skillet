@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"html"
 	"io"
@@ -25,6 +27,8 @@ import (
 	"github.com/mhingston/skillet/internal/search"
 	"github.com/mhingston/skillet/internal/store"
 )
+
+const htmxV2010BlobSHA = "3b7ac1aceb211ca716c7a9c5774c649f74331ee1"
 
 func TestOfflineM3BrowserAcceptance(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -120,7 +124,7 @@ func TestOfflineM3BrowserAcceptance(t *testing.T) {
 		if status != http.StatusOK {
 			t.Fatalf("catalogue status = %d, body=%s", status, body)
 		}
-		for _, want := range []string{"Find reusable capabilities", "Skip to content", "static", "authenticated", `role="separator"`, `tabindex="0"`, `allowEval\":false`} {
+		for _, want := range []string{"Find reusable capabilities", "Skip to content", "static", "authenticated", `role="separator"`, `tabindex="0"`, `"allowEval":false`} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("catalogue shell missing %q", want)
 			}
@@ -287,11 +291,11 @@ func TestOfflineM3BrowserAcceptance(t *testing.T) {
 			}
 		}
 		status, _, htmx := get(t, "/ui/assets/htmx.min.js", "browser-token")
-		if status != http.StatusOK || !strings.Contains(htmx, `version:"2.0.10"`) {
-			t.Fatalf("pinned htmx 2.0.10 asset missing: status=%d", status)
+		if status != http.StatusOK {
+			t.Fatalf("htmx asset status=%d", status)
 		}
-		if strings.Contains(htmx, "r.append(o,e));") {
-			t.Fatal("vendored htmx contains the previously detected syntax corruption")
+		if got := gitBlobSHA([]byte(htmx)); got != htmxV2010BlobSHA {
+			t.Fatalf("vendored htmx does not match upstream v2.0.10: blob=%s want=%s", got, htmxV2010BlobSHA)
 		}
 	})
 }
@@ -302,5 +306,14 @@ func TestM3BrowserAssetsRemainLocalAndPinned(t *testing.T) {
 			t.Fatalf("browser asset unexpectedly external: %s", path)
 		}
 	}
-	_ = fmt.Sprintf
+}
+
+// gitBlobSHA verifies exact vendored bytes against the content-addressed Git
+// object from the upstream htmx v2.0.10 tag. SHA-1 here is Git object identity,
+// not a cryptographic integrity primitive.
+func gitBlobSHA(data []byte) string {
+	h := sha1.New()
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(data))
+	_, _ = h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
 }
