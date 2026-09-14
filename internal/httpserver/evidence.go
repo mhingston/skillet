@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/evidence"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -57,6 +58,9 @@ func (s *Server) improvementCandidatesTool(ctx context.Context, _ *mcp.CallToolR
 	organizationID := s.organizationID
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
+	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, organizationID, input.RevisionID, input.SkillID); err != nil {
+		return nil, improvementCandidatesOutput{}, err
 	}
 	result, err := evidence.New(s.catalogue).Candidates(ctx, organizationID, evidence.Query{SkillID: input.SkillID, RevisionID: input.RevisionID})
 	if err != nil {
