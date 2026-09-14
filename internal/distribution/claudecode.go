@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	ClaudeCodeProfile            = "claude-code-marketplace-v1"
-	ClaudeCodeVerifiedVersion    = "2.1.270"
-	ClaudeCodeMarketplaceSchema  = "https://anthropic.com/claude-code/marketplace.schema.json"
-	MaxCapabilitiesPerArtifact   = 512
+	ClaudeCodeProfile           = "claude-code-marketplace-v1"
+	ClaudeCodeVerifiedVersion   = "2.1.270"
+	ClaudeCodeMarketplaceSchema = "https://anthropic.com/claude-code/marketplace.schema.json"
+	MaxCapabilitiesPerArtifact  = 512
 )
 
 var (
@@ -190,11 +190,11 @@ func BuildClaudeCodeMarketplace(marketplaceName string, capabilities []Capabilit
 	}
 
 	manifest := claudeMarketplace{
-		Schema: ClaudeCodeMarketplaceSchema,
-		Name: marketplaceName,
+		Schema:      ClaudeCodeMarketplaceSchema,
+		Name:        marketplaceName,
 		Description: "Governed, read-only Skillet capability snapshot. Plugin sources are pinned to immutable Git commits.",
-		Owner: claudeOwner{Name: "Skillet"},
-		Plugins: plugins,
+		Owner:       claudeOwner{Name: "Skillet"},
+		Plugins:     plugins,
 	}
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -203,9 +203,12 @@ func BuildClaudeCodeMarketplace(marketplaceName string, capabilities []Capabilit
 	encoded = append(encoded, '\n')
 	digest := sha256.Sum256(encoded)
 	return Artifact{
-		Profile: ClaudeCodeProfile, MarketplaceName: marketplaceName,
-		Manifest: encoded, ManifestSHA256: hex.EncodeToString(digest[:]),
-		Entries: entries, Warnings: warnings,
+		Profile:         ClaudeCodeProfile,
+		MarketplaceName: marketplaceName,
+		Manifest:        encoded,
+		ManifestSHA256:  hex.EncodeToString(digest[:]),
+		Entries:         entries,
+		Warnings:        warnings,
 	}, nil
 }
 
@@ -232,10 +235,21 @@ func allowedGitURL(raw string) bool {
 		return !strings.ContainsAny(raw, "\r\n\t ") && strings.Contains(raw, ":")
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u == nil || u.Host == "" || u.User != nil {
+	if err != nil || u == nil || u.Host == "" {
 		return false
 	}
-	return u.Scheme == "https" || u.Scheme == "ssh"
+	switch u.Scheme {
+	case "https":
+		return u.User == nil
+	case "ssh":
+		if u.User == nil {
+			return true
+		}
+		_, hasPassword := u.User.Password()
+		return !hasPassword && strings.TrimSpace(u.User.Username()) != ""
+	default:
+		return false
+	}
 }
 
 func pluginNameFor(item Capability) string {
