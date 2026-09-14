@@ -65,6 +65,15 @@ func main() {
 	}
 	packageStore := packagestore.New(filepath.Join(c.Server.DataDir, "packages"))
 	catalog := catalogue.New(db, packageStore)
+	auditExporter, auditExportCloser, err := configuredAuditExporter(slog.Default())
+	if err != nil {
+		slog.Error("audit export configuration failed", "error", err)
+		os.Exit(2)
+	}
+	if auditExportCloser != nil {
+		defer auditExportCloser.Close()
+	}
+	catalog.ConfigureAuditExporter(auditExporter)
 	var app *httpserver.Server
 	var embeddingRequests atomic.Uint64
 	var embedder search.Embedder
