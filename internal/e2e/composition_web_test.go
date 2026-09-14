@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -159,10 +160,13 @@ func writeCompositionSkill(t *testing.T, sourceRoot, name, description, version 
 	}
 	if len(values) > 0 {
 		body += "metadata:\n"
-		for _, key := range []string{"version", composition.MetadataRequires, composition.MetadataRecommends, composition.MetadataConflicts} {
-			if value, ok := values[key]; ok {
-				body += "  " + key + ": " + strconv.Quote(value) + "\n"
-			}
+		keys := make([]string, 0, len(values))
+		for key := range values {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			body += "  " + key + ": " + strconv.Quote(values[key]) + "\n"
 		}
 	}
 	body += "---\n# " + name + "\n\nDeterministic composition fixture.\n"
