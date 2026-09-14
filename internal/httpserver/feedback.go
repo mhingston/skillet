@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/catalogue"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -63,6 +64,9 @@ func (s *Server) feedbackTool(ctx context.Context, _ *mcp.CallToolRequest, input
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
 	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReport, organizationID, input.Lifecycle.RevisionID, input.Lifecycle.SkillID); err != nil {
+		return nil, feedbackOutput{}, err
+	}
 	record, err := s.catalogue.RecordFeedback(ctx, organizationID, catalogue.FeedbackObservation{
 		Reference: catalogue.MaterializationReference{
 			RevisionID: input.Lifecycle.RevisionID, SkillID: input.Lifecycle.SkillID, Commit: input.Lifecycle.Commit, Tree: input.Lifecycle.Tree,
@@ -100,6 +104,9 @@ func (s *Server) listFeedbackTool(ctx context.Context, _ *mcp.CallToolRequest, i
 	organizationID := s.organizationID
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
+	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, organizationID, input.RevisionID, input.SkillID); err != nil {
+		return nil, listFeedbackOutput{}, err
 	}
 	records, err := s.catalogue.ListFeedback(ctx, organizationID, input.SkillID, input.RevisionID, input.Category, limit+1, input.Offset)
 	if err != nil {

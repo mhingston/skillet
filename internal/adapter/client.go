@@ -171,7 +171,7 @@ func (c Client) Materialize(ctx context.Context, candidateID string, values ...s
 	if out.Package.DownloadURL == "" || out.Package.ArchiveSHA256 == "" || out.Skill.Name == "" {
 		return out, "", fmt.Errorf("materialize response lacks package, digest, or skill name")
 	}
-	path, err := downloadAndExtract(ctx, out.Package.DownloadURL, out.Package.ArchiveSHA256, out.Package.Format, destination, out.Skill.Name)
+	path, err := downloadAndExtract(ctx, out.Package.DownloadURL, out.Package.ArchiveSHA256, out.Package.Format, destination, out.Skill.Name, c.Token)
 	return out, path, err
 }
 
@@ -260,7 +260,7 @@ func decodeStructured(value any, dst any) error {
 	return json.Unmarshal(b, dst)
 }
 
-func downloadAndExtract(ctx context.Context, url, expected, format, destination, name string) (string, error) {
+func downloadAndExtract(ctx context.Context, url, expected, format, destination, name string, bearer ...string) (string, error) {
 	if format != "tar.gz" {
 		return "", fmt.Errorf("unsupported package format %q", format)
 	}
@@ -270,6 +270,9 @@ func downloadAndExtract(ctx context.Context, url, expected, format, destination,
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
+	}
+	if len(bearer) > 0 && bearer[0] != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer[0])
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

@@ -19,6 +19,7 @@ type Config struct {
 	Server            Server             `yaml:"server"`
 	Organization      Organization       `yaml:"organization"`
 	Auth              Auth               `yaml:"auth"`
+	Authorization     Authorization      `yaml:"authorization"`
 	Packages          Packages           `yaml:"packages"`
 	Search            Search             `yaml:"search"`
 	Repositories      []Repository       `yaml:"repositories"`
@@ -163,6 +164,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("auth.mode %q must be development, static, or oidc", c.Auth.Mode)
 	}
 	if err := c.Auth.validateClaimMapping(); err != nil {
+		return err
+	}
+	if err := c.Authorization.validate(c.Auth); err != nil {
 		return err
 	}
 	if c.Packages.Enabled || c.Server.PublicBaseURL != "" {

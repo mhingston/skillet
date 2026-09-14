@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/candidate"
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/search"
@@ -168,6 +169,9 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	if err != nil {
 		return nil, searchCapabilitiesOutput{}, err
 	}
+	if err := s.authorize(ctx, authz.ActionCapabilitySearch, authz.Resource{OrganizationID: scope.Organization, Namespace: scope.Namespace, Repository: scope.Repository}); err != nil {
+		return nil, searchCapabilitiesOutput{}, err
+	}
 	lexicalDepth, vectorDepth, rrfK := s.lexicalDepth, s.vectorDepth, s.rrfK
 	if lexicalDepth <= 0 {
 		lexicalDepth = 50
@@ -186,7 +190,14 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	if len(trustLevels) == 0 {
 		trustLevels = []string{"approved"}
 	}
-	results, degraded, err := service.Search(query, lexicalDepth, vectorDepth, limit, rrfK, scope, search.Filters{
+	searchLimit := limit
+	if authorizationPolicyFor(s) != nil {
+		// Authorization is an eligibility filter, never ranking text. Fetch the
+		// existing bounded candidate window, then preserve score/order while
+		// dropping candidates the caller is not entitled to see.
+		searchLimit = maxLimit
+	}
+	results, degraded, err := service.Search(query, lexicalDepth, vectorDepth, searchLimit, rrfK, scope, search.Filters{
 		TrustLevels: trustLevels,
 		HasScripts:  input.Filters.HasScripts,
 		Metadata:    input.Filters.Metadata,
@@ -197,11 +208,23 @@ func (s *Server) searchCapabilitiesTool(ctx context.Context, service *capability
 	queryID := fmt.Sprintf("cap_%x", sha256.Sum256([]byte(query+"\x00"+scope.Organization+"\x00"+scope.Namespace+"\x00"+scope.Repository+time.Now().UTC().Format(time.RFC3339Nano))))
 	out := searchCapabilitiesOutput{QueryID: queryID, Degraded: map[string]bool{"embedding": degraded}, Candidates: make([]capabilityCandidate, 0, len(results))}
 	for _, result := range results {
+		candidateScope := result.Capability.Scope
+		if err := s.authorize(ctx, authz.ActionCapabilitySearch, authz.Resource{
+			OrganizationID: candidateScope.Organization,
+			Namespace:      candidateScope.Namespace,
+			Repository:     candidateScope.Repository,
+			ID:             result.Capability.Identity.ID,
+		}); err != nil {
+			continue
+		}
 		token, err := s.signer.Sign(candidate.Payload{Version: 1, OrganizationID: organizationID, RevisionID: result.Capability.Provenance.RevisionID, QueryID: queryID, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(30 * time.Minute).Unix()})
 		if err != nil {
 			return nil, searchCapabilitiesOutput{}, err
 		}
 		out.Candidates = append(out.Candidates, capabilityCandidate{CandidateID: token, Capability: result.Capability, Ranking: result.Ranking})
+		if len(out.Candidates) == limit {
+			break
+		}
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Found %d scoped capability candidate(s). Review and explicitly select one before progressive disclosure or materialisation.", len(out.Candidates))}}}, out, nil
 }
@@ -223,6 +246,18 @@ func (s *Server) describeCapabilityTool(ctx context.Context, service *capability
 	}
 	scope, err := capability.NewScope(organizationID, input.Scope.Namespace, input.Scope.Repository)
 	if err != nil {
+		return nil, describeCapabilityOutput{}, err
+	}
+	descriptor, err := service.Describe(payload.RevisionID, scope)
+	if err != nil {
+		return nil, describeCapabilityOutput{}, err
+	}
+	if err := s.authorize(ctx, authz.ActionCapabilityDescribe, authz.Resource{
+		OrganizationID: descriptor.Scope.Organization,
+		Namespace:      descriptor.Scope.Namespace,
+		Repository:     descriptor.Scope.Repository,
+		ID:             descriptor.Identity.ID,
+	}); err != nil {
 		return nil, describeCapabilityOutput{}, err
 	}
 	detail, err := service.DescribeDetail(payload.RevisionID, scope)

@@ -1,0 +1,209 @@
+package httpserver
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	authn "github.com/mhingston/skillet/internal/auth"
+	authz "github.com/mhingston/skillet/internal/authorization"
+	"github.com/mhingston/skillet/internal/candidate"
+	"github.com/mhingston/skillet/internal/capability"
+	"github.com/mhingston/skillet/internal/search"
+)
+
+func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, doc := range []search.Document{
+		{ID: "rev-a", SkillID: "demo/repo-a/release", OrganizationID: "demo", RepositoryID: "repo-a", Name: "release-a", Description: "database migration release checklist", Searchable: true, TrustLevel: "approved"},
+		{ID: "rev-b", SkillID: "demo/repo-b/release", OrganizationID: "demo", RepositoryID: "repo-b", Name: "release-b", Description: "database release rollback checklist", Searchable: true, TrustLevel: "approved"},
+		// Semantically strongest foreign-tenant fixture: organization filtering must
+		// remove it before claims authorization can ever disclose it.
+		{ID: "rev-other", SkillID: "other/repo-a/release", OrganizationID: "other", RepositoryID: "repo-a", Name: "release-other", Description: "database release checklist database release checklist", Searchable: true, TrustLevel: "approved"},
+	} {
+		if err := index.Add(doc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustScope := func(repository string) capability.Scope {
+		scope, err := capability.NewScope("demo", "engineering", repository)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return scope
+	}
+	capabilities, err := capability.New(index, []capability.SourcePolicy{
+		{RepositoryID: "repo-a", Scope: mustScope("repo-a")},
+		{RepositoryID: "repo-b", Scope: mustScope("repo-b")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	s.ConfigureCapabilities(capabilities)
+	t.Cleanup(func() {
+		s.ConfigureAuthorization(nil)
+		s.ConfigureCapabilities(nil)
+	})
+	s.ConfigureSearch(50, 50, 20, 60, 10)
+	identity := authn.Identity{Subject: "user-1", OrganizationID: "demo", Permissions: map[string]struct{}{"capability.reader": {}}}
+	ctx := withAuthenticatedIdentity(context.Background(), identity)
+	input := searchInput{Query: "database release checklist", Limit: 10}
+
+	_, baseline, err := s.searchTool(ctx, nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baseline.Candidates) != 2 {
+		t.Fatalf("baseline candidates = %d, want 2 with zero cross-organization leakage", len(baseline.Candidates))
+	}
+	for _, candidate := range baseline.Candidates {
+		if candidate.Skill.OrganizationID != "demo" {
+			t.Fatalf("cross-organization candidate leaked before claims filtering: %+v", candidate.Skill)
+		}
+	}
+	// Select the second-ranked result so removal of an unauthorized higher-ranked
+	// result proves that authorization preserves the surviving semantic evidence.
+	allowed := baseline.Candidates[1]
+	denied := baseline.Candidates[0]
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
+		Permissions: []string{"capability.reader"},
+		Actions:     []authz.Action{authz.ActionCapabilitySearch},
+		Resources: []authz.ResourceRule{{
+			Namespace:  "engineering",
+			Repository: allowed.Skill.RepositoryID,
+			IDs:        []string{allowed.Skill.SkillID},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ConfigureAuthorization(policy)
+
+	_, filtered, err := s.authorizedSearchTool(ctx, nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Candidates) != 1 || filtered.Candidates[0].Skill.SkillID != allowed.Skill.SkillID {
+		t.Fatalf("filtered candidates = %+v", filtered.Candidates)
+	}
+	got, want := filtered.Candidates[0].Ranking, allowed.Ranking
+	if got.Rank != want.Rank || got.Score != want.Score || got.LexicalRank != want.LexicalRank || got.VectorRank != want.VectorRank {
+		t.Fatalf("authorization changed ranking evidence: got=%+v want=%+v", got, want)
+	}
+
+	// A caller-supplied repository selector is never authority. Restricting the
+	// retrieval query to a repository outside the grant must return no result,
+	// even though that repository contains a semantically matching capability.
+	forbiddenFilter := input
+	forbiddenFilter.Filters.Repositories = []string{denied.Skill.RepositoryID}
+	_, forbidden, err := s.authorizedSearchTool(ctx, nil, forbiddenFilter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(forbidden.Candidates) != 0 {
+		t.Fatalf("unauthorized repository filter broadened visibility: %+v", forbidden.Candidates)
+	}
+
+	missingPermission := withAuthenticatedIdentity(context.Background(), authn.Identity{Subject: "user-2", OrganizationID: "demo"})
+	if _, _, err := s.authorizedSearchTool(missingPermission, nil, input); !errors.Is(err, ErrAuthorizationDenied) {
+		t.Fatalf("missing permission error = %v, want authorization denial", err)
+	}
+}
+
+func TestEvidenceAuthorizationBySkillIDUsesAuthoritativeScope(t *testing.T) {
+	index, err := search.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := search.Document{
+		ID:             "rev-a",
+		SkillID:        "demo/repo-a/release",
+		OrganizationID: "demo",
+		RepositoryID:   "repo-a",
+		Name:           "release-a",
+		Description:    "release checklist",
+		Searchable:     true,
+		TrustLevel:     "approved",
+	}
+	if err := index.Add(doc); err != nil {
+		t.Fatal(err)
+	}
+	scope, err := capability.NewScope("demo", "engineering", "repo-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities, err := capability.New(index, []capability.SourcePolicy{{RepositoryID: "repo-a", Scope: scope}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	s.ConfigureCapabilities(capabilities)
+	t.Cleanup(func() {
+		s.ConfigureAuthorization(nil)
+		s.ConfigureCapabilities(nil)
+	})
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
+		Permissions: []string{"evidence.reviewer"},
+		Actions:     []authz.Action{authz.ActionEvidenceReview},
+		Resources: []authz.ResourceRule{{
+			Namespace:  "engineering",
+			Repository: "repo-a",
+			IDs:        []string{doc.SkillID},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ConfigureAuthorization(policy)
+	ctx := withAuthenticatedIdentity(context.Background(), authn.Identity{
+		Subject:        "reviewer",
+		OrganizationID: "demo",
+		Permissions:    map[string]struct{}{"evidence.reviewer": {}},
+	})
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, "demo", "", doc.SkillID); err != nil {
+		t.Fatalf("repo-scoped evidence review by stable skill id denied: %v", err)
+	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReview, "demo", "", "demo/repo-b/release"); !errors.Is(err, ErrAuthorizationDenied) {
+		t.Fatalf("out-of-scope evidence review error = %v, want authorization denial", err)
+	}
+}
+
+func TestLockedRestoreAuthorizationRunsBeforePackageAccess(t *testing.T) {
+	s, first, _ := lockedMaterializeFixture(t)
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
+		Permissions: []string{"capability.materializer"},
+		Actions:     []authz.Action{authz.ActionCapabilityMaterialize},
+		Resources:   []authz.ResourceRule{{IDs: []string{"some-other-skill"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ConfigureAuthorization(policy)
+	t.Cleanup(func() { s.ConfigureAuthorization(nil) })
+	// ResolveRevision uses catalogue provenance only. If authorization were
+	// applied after restore/package access, this nil package store would produce
+	// a package error instead of the expected authorization denial.
+	s.restorer.Packages = nil
+	ctx := withAuthenticatedIdentity(context.Background(), authn.Identity{
+		Subject:        "user-1",
+		OrganizationID: "demo",
+		Permissions:    map[string]struct{}{"capability.materializer": {}},
+	})
+	input := materializeInput{Locked: &lockedInput{
+		SkillID:       first.SkillID,
+		RepositoryID:  "skills",
+		Path:          first.Path,
+		Commit:        first.Commit,
+		Tree:          first.Tree,
+		ArchiveSHA256: first.ArchiveSHA256TarGZ,
+		Format:        "tar.gz",
+	}}
+	if _, _, err := s.authorizedMaterializeTool(ctx, nil, input); !errors.Is(err, ErrAuthorizationDenied) {
+		t.Fatalf("locked restore error = %v, want authorization denial before package access", err)
+	}
+}
