@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "skillet-fixture",
+  "description": "Governed, read-only Skillet capability snapshot. Plugin sources are pinned to immutable Git commits.",
+  "owner": {
+    "name": "Skillet"
+  },
+  "plugins": [
+    {
+      "name": "review-a2767083",
+      "description": "Review changes safely",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/example/skills.git",
+        "path": "skills/review",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "strict": false,
+      "skills": [
+        "./"
+      ]
+    }
+  ]
+}
