@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/catalogue"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -48,6 +49,9 @@ func (s *Server) lifecycleTool(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	organizationID := s.organizationID
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
+	}
+	if err := s.authorizeEvidenceResource(ctx, authz.ActionEvidenceReport, organizationID, input.Lifecycle.RevisionID, input.Lifecycle.SkillID); err != nil {
+		return nil, lifecycleOutput{}, err
 	}
 	observation := catalogue.LifecycleObservation{
 		RevisionID:        input.Lifecycle.RevisionID,
