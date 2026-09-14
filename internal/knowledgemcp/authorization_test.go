@@ -48,19 +48,19 @@ commonterm beta
 	}
 	allowed := baseline.Results[len(baseline.Results)-1]
 	denied := baseline.Results[0]
-	if allowed.Result.ChunkID == denied.Result.ChunkID {
-		t.Fatal("fixture did not produce distinct chunks")
+	if allowed.Result.DocumentID == denied.Result.DocumentID || allowed.Result.ChunkID == denied.Result.ChunkID {
+		t.Fatal("fixture did not produce distinct knowledge resources")
 	}
 
 	errDenied := errors.New("not entitled")
 	authorize := func(_ context.Context, action authz.Action, resource authz.Resource) error {
 		switch action {
 		case authz.ActionKnowledgeSearch:
-			if resource.ID == "" || resource.ID == allowed.Result.ChunkID {
+			if resource.ID == "" || resource.ID == allowed.Result.DocumentID {
 				return nil
 			}
 		case authz.ActionKnowledgeRead:
-			if resource.ID == allowed.Result.ChunkID {
+			if resource.ID == allowed.Result.DocumentID {
 				return nil
 			}
 		}
@@ -82,7 +82,7 @@ commonterm beta
 	result := callTool(t, ctx, session, "search_knowledge", map[string]any{"query": "commonterm", "limit": 10})
 	var filtered knowledge.OKFSearchResponse
 	decodeStructured(t, result.StructuredContent, &filtered)
-	if len(filtered.Results) != 1 || filtered.Results[0].Result.ChunkID != allowed.Result.ChunkID {
+	if len(filtered.Results) != 1 || filtered.Results[0].Result.DocumentID != allowed.Result.DocumentID {
 		t.Fatalf("filtered results = %+v", filtered.Results)
 	}
 	got := filtered.Results[0].Result
