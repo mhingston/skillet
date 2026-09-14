@@ -28,7 +28,10 @@ import (
 
 type collaborationBrowserValidator struct{}
 
-func (collaborationBrowserValidator) Authenticate(string) (authn.Identity, error) {
+func (collaborationBrowserValidator) Authenticate(authorization string) (authn.Identity, error) {
+	if authorization != "Bearer browser-token" {
+		return authn.Identity{}, authn.ErrUnauthorized
+	}
 	return authn.Identity{
 		Subject:        "collaboration-browser",
 		OrganizationID: "demo",
