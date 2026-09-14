@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/candidate"
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/catalogue"
@@ -65,15 +66,17 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var release search.Document
+	var release, incident search.Document
 	for _, doc := range docs {
-		if doc.SkillID == "demo/central/release" {
+		switch doc.SkillID {
+		case "demo/central/release":
 			release = doc
-			break
+		case "demo/central/incident":
+			incident = doc
 		}
 	}
-	if release.ID == "" {
-		t.Fatal("release fixture revision missing")
+	if release.ID == "" || incident.ID == "" {
+		t.Fatalf("fixture revisions missing: release=%q incident=%q", release.ID, incident.ID)
 	}
 
 	scope := mustCapabilityScope(t, "demo", "", "")
@@ -85,6 +88,20 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 
 	app := httpserver.NewComplete(nil, nil, index, "demo", candidate.Signer{Key: []byte("collaboration-candidate-key")}, packages, packageurl.Signer{Key: []byte("collaboration-package-key")}, catalog, "http://example.invalid")
 	app.ConfigureCapabilities(capabilities)
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
+		Permissions: []string{"skills.search"},
+		Actions: []authz.Action{
+			authz.ActionCapabilityDescribe,
+			authz.ActionCollaborationRead,
+			authz.ActionCollaborationComment,
+			authz.ActionCollaborationWatch,
+		},
+		Resources: []authz.ResourceRule{{IDs: []string{"demo/central/release"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.ConfigureAuthorization(policy)
 	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "static", StaticToken: "browser-token", OrganizationID: "demo"}))
 	defer server.Close()
 
@@ -135,6 +152,10 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 	collaborationPath := "/ui/catalogue/" + url.PathEscape(release.ID) + "/collaboration"
 	if status, _ := get(collaborationPath, ""); status != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated collaboration status=%d, want 401", status)
+	}
+	hiddenPath := "/ui/catalogue/" + url.PathEscape(incident.ID) + "/collaboration"
+	if status, hidden := get(hiddenPath, "browser-token"); status != http.StatusNotFound || strings.Contains(hidden, "incident response") {
+		t.Fatalf("unauthorised thread status=%d leaked=%q", status, hidden)
 	}
 	status, body := get(collaborationPath, "browser-token")
 	if status != http.StatusOK {
