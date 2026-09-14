@@ -16,12 +16,8 @@ func (s *Server) authorizedPackageHandler(next http.Handler, auth AuthConfig) ht
 		}
 		identity, err := auth.Validator.Authenticate(r.Header.Get("Authorization"))
 		if err != nil {
-			if auth.Metrics != nil {
-				auth.Metrics.AuthFailures.Add(1)
-			}
-			if auth.Audit != nil {
-				_ = auth.Audit(r.Context(), auth.OrganizationID, "authentication_authorization_failure", map[string]any{"operation": "package", "reason": "token"})
-			}
+			s.metrics.AuthFailures.Add(1)
+			_ = s.recordAudit(r.Context(), auth.OrganizationID, "authentication_authorization_failure", map[string]any{"operation": "package", "reason": "token"})
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
