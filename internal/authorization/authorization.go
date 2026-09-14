@@ -24,6 +24,8 @@ const (
 	ActionEvidenceReport        Action = "evidence.report"
 	ActionEvidenceReview        Action = "evidence.review"
 	ActionGovernanceRead        Action = "governance.read"
+	ActionOperatorRead          Action = "operator.read"
+	ActionOperatorAuditProbe    Action = "operator.audit_probe"
 )
 
 var supportedActions = map[Action]struct{}{
@@ -35,11 +37,14 @@ var supportedActions = map[Action]struct{}{
 	ActionEvidenceReport:        {},
 	ActionEvidenceReview:        {},
 	ActionGovernanceRead:        {},
+	ActionOperatorRead:          {},
+	ActionOperatorAuditProbe:    {},
 }
 
 // Resource contains authorization scope only. It deliberately contains no
 // semantic query/ranking text. ID is an optional stable capability, knowledge,
-// evidence, or governance identity when an operation addresses one resource.
+// evidence, governance, or operator resource identity when an operation
+// addresses one resource.
 type Resource struct {
 	OrganizationID string
 	Namespace      string

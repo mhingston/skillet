@@ -71,18 +71,19 @@ type webKnowledgeView struct {
 }
 
 type webPageData struct {
-	Title       string
-	Section     string
-	Identity    webIdentity
-	Scope       webScope
-	Query       string
-	Filters     webFilters
-	Notice      string
-	Error       string
-	Capabilities []webCapabilityItem
-	Capability *webCapabilityView
+	Title            string
+	Section          string
+	Identity         webIdentity
+	OperatorVisible  bool
+	Scope            webScope
+	Query            string
+	Filters          webFilters
+	Notice           string
+	Error            string
+	Capabilities     []webCapabilityItem
+	Capability       *webCapabilityView
 	KnowledgeResults []webKnowledgeItem
-	Knowledge   *webKnowledgeView
+	Knowledge        *webKnowledgeView
 }
 
 func (s *Server) addWebRoutes(mux *http.ServeMux) {
@@ -104,6 +105,7 @@ func (s *Server) addWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ui/catalogue/{revisionID}", s.webCapabilityDetail)
 	mux.HandleFunc("GET /ui/knowledge", s.webKnowledgeSearch)
 	mux.HandleFunc("GET /ui/knowledge/{chunkID}", s.webKnowledgeRead)
+	s.addOperatorRoutes(mux)
 }
 
 func (s *Server) webAssetHandler(assets fs.FS) http.Handler {
@@ -171,8 +173,8 @@ func (s *Server) webCatalogue(w http.ResponseWriter, r *http.Request) {
 		}
 		page.Capabilities = append(page.Capabilities, webCapabilityItem{
 			CandidateID: candidate.CandidateID,
-			Capability: candidate.Capability,
-			DetailURL: "/ui/catalogue/" + url.PathEscape(candidate.Capability.Provenance.RevisionID) + "?" + values.Encode(),
+			Capability:  candidate.Capability,
+			DetailURL:   "/ui/catalogue/" + url.PathEscape(candidate.Capability.Provenance.RevisionID) + "?" + values.Encode(),
 		})
 	}
 	if len(page.Capabilities) == 0 {
@@ -420,7 +422,9 @@ func (s *Server) baseWebPage(r *http.Request, section, title string) webPageData
 	} else {
 		identity.Subject = "development"
 	}
-	return webPageData{Title: title + " · Skillet", Section: section, Identity: identity}
+	page := webPageData{Title: title + " · Skillet", Section: section, Identity: identity}
+	page.OperatorVisible = identity.Organization != "" && s.webCanAuthorize(r.Context(), authz.ActionOperatorRead, authz.Resource{OrganizationID: identity.Organization})
+	return page
 }
 
 func scopeFromRequest(r *http.Request) webScope {
@@ -530,7 +534,7 @@ func webPageComponent(page webPageData) templ.Component {
 }
 
 var webTemplate = template.Must(template.New("page").Funcs(template.FuncMap{
-	"join": strings.Join,
-	"short": shortValue,
+	"join":     strings.Join,
+	"short":    shortValue,
 	"metadata": sortedMetadata,
 }).Parse(webTemplateSource))

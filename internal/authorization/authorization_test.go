@@ -21,6 +21,8 @@ func TestCompatibilityPolicyAllowsSupportedActionsInsideOrganization(t *testing.
 		ActionEvidenceReport,
 		ActionEvidenceReview,
 		ActionGovernanceRead,
+		ActionOperatorRead,
+		ActionOperatorAuditProbe,
 	} {
 		t.Run(string(action), func(t *testing.T) {
 			decision := policy.Authorize(context.Background(), identity, action, resource)

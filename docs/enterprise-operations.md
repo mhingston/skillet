@@ -93,6 +93,10 @@ Supported actions are currently:
 - `evidence.report`
 - `evidence.review`
 - `governance.read`
+- `operator.read`
+- `operator.audit_probe`
+
+The operator actions are used by the bounded M3 admin surface described in `docs/operator-ui.md`. They do not grant browser authority over source-owned governance or startup configuration.
 
 Within one grant, configured permission and attribute selectors are ANDed; separate grants are ORed. Resource rules are exact boundaries. A repository rule requires its namespace. Stable resource IDs can further narrow a rule.
 
