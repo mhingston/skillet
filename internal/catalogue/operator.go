@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/mhingston/skillet/internal/skillspec"
@@ -29,14 +30,14 @@ type OperatorFinding struct {
 }
 
 type OperatorQuarantine struct {
-	RevisionID  string
-	SkillID     string
+	RevisionID   string
+	SkillID      string
 	RepositoryID string
-	Path        string
-	Name        string
-	Commit      string
-	Tree        string
-	Findings    []OperatorFinding
+	Path         string
+	Name         string
+	Commit       string
+	Tree         string
+	Findings     []OperatorFinding
 }
 
 type OperatorAuditEvent struct {
@@ -94,6 +95,7 @@ func (s *Store) OperatorSnapshot(ctx context.Context, organizationID string, aud
 			rows.Close()
 			return OperatorSnapshot{}, err
 		}
+		status.URL = redactOperatorURL(status.URL)
 		snapshot.Repositories = append(snapshot.Repositories, status)
 	}
 	if err := rows.Err(); err != nil {
@@ -174,6 +176,21 @@ func (s *Store) AuditExportStatus() AuditExportStatus {
 		status.Failures = counters.Failures()
 	}
 	return status
+}
+
+func redactOperatorURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "[configured source]"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func boundedOperatorText(value string, maxRunes int) string {
