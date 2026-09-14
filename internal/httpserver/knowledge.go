@@ -31,14 +31,16 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 	if server == nil || app == nil {
 		return
 	}
-	// Capability, deterministic composition, evidence, reviewable proposals, and
-	// knowledge are separate domains but share this bounded MCP transport
-	// composition point. Proposal tools produce/accept review data only; they do
-	// not execute patches or mutate canonical source.
+	// Capability, deterministic composition, evidence, reviewable proposals,
+	// opt-in experiments, and knowledge are separate domains but share this
+	// bounded MCP transport composition point. Proposal/experiment tools produce
+	// and accept control-plane data only; they do not execute patches, workers,
+	// or mutate canonical source.
 	addCapabilityTools(server, app)
 	addCompositionTools(server, app)
 	addEvidenceTools(server, app)
 	addProposalTools(server, app)
+	addExperimentTools(server, app)
 	value, ok := knowledgeServices.Load(app)
 	if !ok {
 		return
