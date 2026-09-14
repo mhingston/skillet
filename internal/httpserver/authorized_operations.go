@@ -20,6 +20,9 @@ func (s *Server) authorizedSearchTool(ctx context.Context, req *mcp.CallToolRequ
 	if authenticated, ok := OrganizationID(ctx); ok {
 		organizationID = authenticated
 	}
+	// This organisation-only check is an eligibility probe. ClaimsPolicy does
+	// not treat it as authority for any namespace/repository; every ranked
+	// candidate is re-authorized below from authoritative source provenance.
 	if err := s.authorize(ctx, authz.ActionCapabilitySearch, authz.Resource{OrganizationID: organizationID}); err != nil {
 		return nil, searchOutput{}, err
 	}
@@ -44,7 +47,8 @@ func (s *Server) authorizedSearchTool(ctx context.Context, req *mcp.CallToolRequ
 	}
 	filtered := make([]searchCandidate, 0, requestedLimit)
 	for _, item := range out.Candidates {
-		if err := s.authorize(ctx, authz.ActionCapabilitySearch, authz.Resource{OrganizationID: organizationID, ID: item.Skill.SkillID}); err != nil {
+		resource := s.capabilitySearchAuthorizationResource(organizationID, item.Skill)
+		if err := s.authorize(ctx, authz.ActionCapabilitySearch, resource); err != nil {
 			continue
 		}
 		filtered = append(filtered, item)
@@ -80,7 +84,8 @@ func (s *Server) authorizedListSkillsTool(ctx context.Context, _ *mcp.CallToolRe
 	docs := s.search.List(search.Filters{OrganizationID: organizationID})
 	allowed := make([]search.Document, 0, len(docs))
 	for _, doc := range docs {
-		if err := s.authorize(ctx, authz.ActionCapabilitySearch, authz.Resource{OrganizationID: organizationID, ID: doc.SkillID}); err != nil {
+		resource := s.capabilitySearchAuthorizationResource(organizationID, doc)
+		if err := s.authorize(ctx, authz.ActionCapabilitySearch, resource); err != nil {
 			continue
 		}
 		doc.Vector = nil
