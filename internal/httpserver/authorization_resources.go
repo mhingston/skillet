@@ -5,6 +5,7 @@ import (
 
 	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/catalogue"
+	"github.com/mhingston/skillet/internal/search"
 )
 
 func (s *Server) capabilityAuthorizationResource(organizationID string, info catalogue.RevisionInfo) authz.Resource {
@@ -20,6 +21,31 @@ func (s *Server) capabilityAuthorizationResource(organizationID string, info cat
 		return resource
 	}
 	if scope, ok := service.ScopeForRepository(organizationID, info.RepositoryID); ok {
+		resource.OrganizationID = scope.Organization
+		resource.Namespace = scope.Namespace
+		resource.Repository = scope.Repository
+	}
+	return resource
+}
+
+// capabilitySearchAuthorizationResource derives scope from authoritative
+// capability source policy rather than caller-supplied repository filters.
+// Legacy search documents carry the immutable revision and source repository,
+// which are sufficient to recover the same namespace/repository boundary used
+// by first-class capability operations.
+func (s *Server) capabilitySearchAuthorizationResource(organizationID string, doc search.Document) authz.Resource {
+	resource := authz.Resource{OrganizationID: organizationID, ID: doc.SkillID}
+	service := configuredCapabilityServiceFor(s)
+	if service == nil {
+		return resource
+	}
+	if scope, ok := service.ScopeForRevision(doc.ID); ok {
+		resource.OrganizationID = scope.Organization
+		resource.Namespace = scope.Namespace
+		resource.Repository = scope.Repository
+		return resource
+	}
+	if scope, ok := service.ScopeForRepository(organizationID, doc.RepositoryID); ok {
 		resource.OrganizationID = scope.Organization
 		resource.Namespace = scope.Namespace
 		resource.Repository = scope.Repository
