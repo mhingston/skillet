@@ -129,13 +129,17 @@ func writeCompositionSkill(t *testing.T, sourceRoot, name, description, version 
 		t.Fatal(err)
 	}
 	body := "---\nname: " + name + "\ndescription: " + description + "\n"
-	if version != "" {
-		body += "version: " + strconv.Quote(version) + "\n"
+	values := make(map[string]string, len(metadata)+1)
+	for key, value := range metadata {
+		values[key] = value
 	}
-	if len(metadata) > 0 {
+	if version != "" {
+		values["version"] = version
+	}
+	if len(values) > 0 {
 		body += "metadata:\n"
-		for _, key := range []string{composition.MetadataRequires, composition.MetadataRecommends, composition.MetadataConflicts} {
-			if value, ok := metadata[key]; ok {
+		for _, key := range []string{"version", composition.MetadataRequires, composition.MetadataRecommends, composition.MetadataConflicts} {
+			if value, ok := values[key]; ok {
 				body += "  " + key + ": " + strconv.Quote(value) + "\n"
 			}
 		}
