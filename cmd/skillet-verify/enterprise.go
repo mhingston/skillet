@@ -34,6 +34,7 @@ func writeEnterpriseAcceptanceReport(path string, steps []stepResult) (bool, err
 	compatibility := stepPassed["enterprise-static-development-regression"]
 	ranking := stepPassed["enterprise-ranking-isolation"]
 	audit := stepPassed["enterprise-audit-degradation"]
+	failClosed := entra && malformed && ranking
 
 	leakageObserved := any(nil)
 	if ranking {
@@ -50,7 +51,7 @@ func writeEnterpriseAcceptanceReport(path string, steps []stepResult) (bool, err
 			{Name: "allow_deny_scope_matrix", SourceStep: "enterprise-entra-oidc-e2e", Passed: entra, Observed: entra, Expected: true},
 			{Name: "capability_knowledge_materialization_claims_flow", SourceStep: "offline-m2-claims-e2e", Passed: claimsWorkflow, Observed: claimsWorkflow, Expected: true},
 			{Name: "cross_organization_leakage", SourceStep: "enterprise-ranking-isolation", Passed: ranking, Observed: leakageObserved, Expected: 0},
-			{Name: "missing_malformed_untrusted_claims_fail_closed", SourceStep: "enterprise-malformed-claims", Passed: malformed, Observed: malformed, Expected: true},
+			{Name: "missing_malformed_untrusted_claims_fail_closed", SourceStep: "enterprise-entra-oidc-e2e + enterprise-malformed-claims + enterprise-ranking-isolation", Passed: failClosed, Observed: failClosed, Expected: true},
 			{Name: "static_development_auth_regression", SourceStep: "enterprise-static-development-regression", Passed: compatibility, Observed: compatibility, Expected: true},
 			{Name: "authorization_metadata_has_no_ranking_effect", SourceStep: "enterprise-ranking-isolation", Passed: ranking, Observed: ranking, Expected: true},
 			{Name: "audit_export_failure_preserves_authoritative_state", SourceStep: "enterprise-audit-degradation", Passed: audit, Observed: audit, Expected: true},
