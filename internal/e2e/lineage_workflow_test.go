@@ -139,7 +139,8 @@ func TestM42OptInImprovementLineageWorkflow(t *testing.T) {
 		t.Fatalf("lineage changed canonical resolution/ranking inputs: before=(%s,%d) after=(%s,%d)", activeBefore, searchableBefore, activeAfter, searchableAfter)
 	}
 
-	otherServer := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "development", OrganizationID: "other"}))
+	otherApp := httpserver.NewComplete(nil, nil, nil, "other", candidate.Signer{Key: []byte("m42-candidate-key")}, packages, packageurl.Signer{Key: []byte("m42-package-key")}, catalog, "http://example.invalid")
+	otherServer := httptest.NewServer(otherApp.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "development", OrganizationID: "other"}))
 	defer otherServer.Close()
 	otherClient := mcp.NewClient(&mcp.Implementation{Name: "m42-lineage-cross-scope", Version: "1"}, nil)
 	otherSession, err := otherClient.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: otherServer.URL + "/mcp", DisableStandaloneSSE: true, MaxRetries: -1}, nil)
