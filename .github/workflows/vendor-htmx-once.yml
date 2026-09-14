@@ -1,0 +1,41 @@
+name: vendor htmx once
+
+on:
+  push:
+    branches:
+      - issue-69-web-ui
+    paths:
+      - .github/workflows/vendor-htmx-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-69-web-ui
+      - name: Fetch and verify htmx v2.0.10
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=internal/httpserver/webassets/htmx.min.js
+          curl -fsSL https://raw.githubusercontent.com/bigskysoftware/htmx/refs/tags/v2.0.10/dist/htmx.min.js -o "$target"
+          got="$(git hash-object "$target")"
+          want=3b7ac1aceb211ca716c7a9c5774c649f74331ee1
+          test "$got" = "$want"
+      - name: Commit exact vendored asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=internal/httpserver/webassets/htmx.min.js
+          if git diff --quiet -- "$target"; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$target"
+          git commit -m "fix(ui): vendor exact htmx 2.0.10 bytes"
+          git push origin HEAD:issue-69-web-ui
