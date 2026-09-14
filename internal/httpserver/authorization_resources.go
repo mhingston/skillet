@@ -76,6 +76,17 @@ func (s *Server) authorizeEvidenceResource(ctx context.Context, action authz.Act
 				resource.OrganizationID = scope.Organization
 				resource.Namespace = scope.Namespace
 				resource.Repository = scope.Repository
+			} else if s.catalogue != nil {
+				// Retained evidence can outlive active routing. Resolve the stable
+				// skill's authoritative repository from catalogue history, then apply
+				// the configured repository policy instead of trusting the skill ID.
+				if repositoryID, err := s.catalogue.RepositoryIDForSkill(ctx, organizationID, stableID); err == nil {
+					if scope, ok := service.ScopeForRepository(organizationID, repositoryID); ok {
+						resource.OrganizationID = scope.Organization
+						resource.Namespace = scope.Namespace
+						resource.Repository = scope.Repository
+					}
+				}
 			}
 		}
 	}
