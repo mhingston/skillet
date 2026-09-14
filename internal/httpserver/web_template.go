@@ -93,7 +93,7 @@ const webTemplateSource = `{{define "page"}}<!doctype html>
   {{if .Notice}}<div class="state-card"><p>{{.Notice}}</p></div>{{end}}
   {{range .Capabilities}}
     <article class="result-card capability-card">
-      <div class="card-heading"><div><span class="badge kind-badge">{{.Capability.Identity.Kind}}</span><span class="badge state-{{.Capability.Status}}">{{.Capability.Status}}</span></div><span class="rank">rank {{.Ranking.Rank}}</span></div>
+      <div class="card-heading"><div><span class="badge kind-badge">{{.Capability.Identity.Kind}}</span><span class="badge state-{{.Capability.Status}}">{{.Capability.Status}}</span></div></div>
       <h2><a href="{{.DetailURL}}">{{.Capability.Name}}</a></h2>
       <p>{{.Capability.Description}}</p>
       <dl class="compact-meta"><div><dt>Version</dt><dd>{{if .Capability.Version}}{{.Capability.Version}}{{else}}—{{end}}</dd></div><div><dt>Owner</dt><dd>{{if .Capability.Governance.Owner}}{{.Capability.Governance.Owner}}{{else}}—{{end}}</dd></div><div><dt>Trust</dt><dd>{{.Capability.TrustLevel}}</dd></div><div><dt>Source</dt><dd>{{.Capability.Source.RepositoryID}}</dd></div></dl>
