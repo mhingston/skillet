@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -43,13 +45,12 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 	catalog := catalogue.New(db, packages)
 
 	repositoryRoot := filepath.Join(root, "central")
-	writeGovernanceSkill(t, repositoryRoot, "review-base", "base review capability", map[string]string{"version": "1.2.0"})
-	writeGovernanceSkill(t, repositoryRoot, "review-root", "root review capability", map[string]string{
-		"version": "2.0.0",
+	writeCompositionSkill(t, repositoryRoot, "review-base", "base review capability", "1.2.0", nil)
+	writeCompositionSkill(t, repositoryRoot, "review-root", "root review capability", "2.0.0", map[string]string{
 		composition.MetadataRequires: `[{"id":"demo/central/review-base","version":"^1.0.0"}]`,
 		composition.MetadataRecommends: `[{"id":"demo/central/optional-context"}]`,
 	})
-	writeGovernanceSkill(t, repositoryRoot, "optional-context", "optional context capability", map[string]string{"version": "1.0.0"})
+	writeCompositionSkill(t, repositoryRoot, "optional-context", "optional context capability", "1.0.0", nil)
 	result := syncM1Repository(t, ctx, repositoryRoot, "central", catalog, packages)
 	if result.Admitted != 3 || result.Quarantined != 0 { t.Fatalf("admission=%+v", result) }
 
@@ -119,4 +120,28 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 			t.Fatalf("unauthorised dependency identity leaked: %s", body)
 		}
 	})
+}
+
+func writeCompositionSkill(t *testing.T, sourceRoot, name, description, version string, metadata map[string]string) {
+	t.Helper()
+	dir := filepath.Join(sourceRoot, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: " + name + "\ndescription: " + description + "\n"
+	if version != "" {
+		body += "version: " + strconv.Quote(version) + "\n"
+	}
+	if len(metadata) > 0 {
+		body += "metadata:\n"
+		for _, key := range []string{composition.MetadataRequires, composition.MetadataRecommends, composition.MetadataConflicts} {
+			if value, ok := metadata[key]; ok {
+				body += "  " + key + ": " + strconv.Quote(value) + "\n"
+			}
+		}
+	}
+	body += "---\n# " + name + "\n\nDeterministic composition fixture.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
