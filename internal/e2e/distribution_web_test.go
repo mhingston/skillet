@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,8 +20,10 @@ import (
 	"github.com/mhingston/skillet/internal/catalogue"
 	"github.com/mhingston/skillet/internal/composition"
 	"github.com/mhingston/skillet/internal/distribution"
+	"github.com/mhingston/skillet/internal/gitstore"
 	"github.com/mhingston/skillet/internal/governance"
 	"github.com/mhingston/skillet/internal/httpserver"
+	"github.com/mhingston/skillet/internal/ingest"
 	"github.com/mhingston/skillet/internal/packagestore"
 	"github.com/mhingston/skillet/internal/packageurl"
 	"github.com/mhingston/skillet/internal/search"
@@ -35,6 +38,69 @@ func (distributionBrowserValidator) Authenticate(string) (authn.Identity, error)
 		OrganizationID: "demo",
 		Permissions:    map[string]struct{}{"capability.reader": {}},
 	}, nil
+}
+
+// distributionGitSource keeps the acceptance fixture offline while exercising
+// the same provenance shape as a remote Git repository. LocalSource owns the
+// actual immutable content snapshot; this adapter exposes that snapshot under a
+// valid Git commit SHA so the host distribution profile is tested without
+// weakening production provenance validation.
+type distributionGitSource struct {
+	local       *gitstore.LocalSource
+	localCommit string
+	commit      string
+}
+
+func (s *distributionGitSource) Fetch(ctx context.Context, ref string) (string, error) {
+	if s == nil || s.local == nil || len(s.commit) != 40 {
+		return "", fmt.Errorf("distribution git fixture is invalid")
+	}
+	localCommit, err := s.local.Fetch(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	s.localCommit = localCommit
+	return s.commit, nil
+}
+
+func (s *distributionGitSource) ListTree(ctx context.Context, commit string) ([]gitstore.Entry, error) {
+	if s == nil || commit != s.commit || s.localCommit == "" {
+		return nil, fmt.Errorf("distribution git fixture commit %q is unavailable", commit)
+	}
+	return s.local.ListTree(ctx, s.localCommit)
+}
+
+func (s *distributionGitSource) ReadBlob(ctx context.Context, objectID string) ([]byte, error) {
+	if s == nil || s.local == nil {
+		return nil, fmt.Errorf("distribution git fixture is unavailable")
+	}
+	return s.local.ReadBlob(ctx, objectID)
+}
+
+func (s *distributionGitSource) TreeID(ctx context.Context, commit, root string) (string, error) {
+	if s == nil || commit != s.commit || s.localCommit == "" {
+		return "", fmt.Errorf("distribution git fixture commit %q is unavailable", commit)
+	}
+	return s.local.TreeID(ctx, s.localCommit, root)
+}
+
+func syncDistributionGitRepository(t *testing.T, ctx context.Context, sourceRoot, repositoryID, repositoryURL, commit string, catalog *catalogue.Store, packages *packagestore.Store) ingest.Result {
+	t.Helper()
+	local, err := gitstore.NewLocalSource(sourceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &distributionGitSource{local: local, commit: commit}
+	resolvedCommit, err := source.Fetch(ctx, "refs/heads/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := catalogue.Repository{ID: repositoryID, OrganizationID: "demo", URL: repositoryURL, Ref: "refs/heads/main", TrustLevel: "approved", Owner: "verification"}
+	result, err := ingest.SyncAtCommitWithOptions(ctx, source, repo, packages, catalog, resolvedCommit, ingest.Options{Include: []string{"**/SKILL.md"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
 }
 
 func TestDistributionBrowserAcceptance(t *testing.T) {
@@ -62,40 +128,14 @@ func TestDistributionBrowserAcceptance(t *testing.T) {
 		governance.StateKey:  string(capability.StatusYanked),
 		governance.ReasonKey: "withdrawn fixture",
 	})
-	if result := syncM1Repository(t, ctx, centralRoot, "central", catalog, packages); result.Admitted != 4 || result.Quarantined != 0 {
+	if result := syncDistributionGitRepository(t, ctx, centralRoot, "central", "https://github.com/example/central-skills.git", "1111111111111111111111111111111111111111", catalog, packages); result.Admitted != 4 || result.Quarantined != 0 {
 		t.Fatalf("central admission=%+v", result)
 	}
 
 	privateRoot := filepath.Join(root, "private")
 	writeCompositionSkill(t, privateRoot, "private-review", "restricted fixture must not leak", "1.0.0", nil)
-	if result := syncM1Repository(t, ctx, privateRoot, "private", catalog, packages); result.Admitted != 1 || result.Quarantined != 0 {
+	if result := syncDistributionGitRepository(t, ctx, privateRoot, "private", "https://github.com/example/private-skills.git", "2222222222222222222222222222222222222222", catalog, packages); result.Admitted != 1 || result.Quarantined != 0 {
 		t.Fatalf("private admission=%+v", result)
-	}
-	for _, fixture := range []struct {
-		id  string
-		url string
-	}{
-		{id: "demo/central", url: "https://github.com/example/central-skills.git"},
-		{id: "demo/private", url: "https://github.com/example/private-skills.git"},
-	} {
-		result, updateErr := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, fixture.url, fixture.id)
-		if updateErr != nil {
-			t.Fatal(updateErr)
-		}
-		affected, affectedErr := result.RowsAffected()
-		if affectedErr != nil {
-			t.Fatal(affectedErr)
-		}
-		if affected != 1 {
-			t.Fatalf("repository fixture %q update affected %d rows", fixture.id, affected)
-		}
-		var storedURL string
-		if queryErr := db.QueryRowContext(ctx, `SELECT url FROM repositories WHERE id=?`, fixture.id).Scan(&storedURL); queryErr != nil {
-			t.Fatal(queryErr)
-		}
-		if storedURL != fixture.url {
-			t.Fatalf("repository fixture %q url=%q want=%q", fixture.id, storedURL, fixture.url)
-		}
 	}
 
 	docs, err := catalog.RoutingDocuments(ctx, "demo")
