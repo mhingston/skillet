@@ -13,6 +13,7 @@ import (
 type Payload struct {
 	Version        int    `json:"version"`
 	OrganizationID string `json:"organization_id"`
+	RevisionID     string `json:"revision_id,omitempty"`
 	Digest         string `json:"digest"`
 	Format         string `json:"format"`
 	ExpiresAt      int64  `json:"expires_at"`
