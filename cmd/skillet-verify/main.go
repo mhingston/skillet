@@ -39,17 +39,18 @@ type metricResult struct {
 }
 
 type verificationReport struct {
-	SchemaVersion           int                       `json:"schema_version"`
-	Suite                   string                    `json:"suite"`
-	Passed                  bool                      `json:"passed"`
-	Steps                   []stepResult              `json:"steps"`
-	Journeys                []journeyResult           `json:"e2e_journeys,omitempty"`
-	Metrics                 []metricResult            `json:"metrics,omitempty"`
-	CapabilityKindRecall    map[string]float64        `json:"capability_recall_by_kind,omitempty"`
-	CapabilityKindConfusion map[string]map[string]int `json:"capability_kind_confusion,omitempty"`
-	EvalReport              string                    `json:"eval_report"`
-	CapabilityEvalReport    string                    `json:"capability_eval_report,omitempty"`
-	KnowledgeEvalReport     string                    `json:"knowledge_eval_report,omitempty"`
+	SchemaVersion              int                       `json:"schema_version"`
+	Suite                      string                    `json:"suite"`
+	Passed                     bool                      `json:"passed"`
+	Steps                      []stepResult              `json:"steps"`
+	Journeys                   []journeyResult           `json:"e2e_journeys,omitempty"`
+	Metrics                    []metricResult            `json:"metrics,omitempty"`
+	CapabilityKindRecall       map[string]float64        `json:"capability_recall_by_kind,omitempty"`
+	CapabilityKindConfusion    map[string]map[string]int `json:"capability_kind_confusion,omitempty"`
+	EvalReport                 string                    `json:"eval_report"`
+	CapabilityEvalReport       string                    `json:"capability_eval_report,omitempty"`
+	KnowledgeEvalReport        string                    `json:"knowledge_eval_report,omitempty"`
+	EnterpriseAcceptanceReport string                    `json:"enterprise_acceptance_report,omitempty"`
 }
 
 func main() {
@@ -67,6 +68,7 @@ func main() {
 	rawEvalPath := filepath.Join(*reportDir, "retrieval.json")
 	capabilityEvalPath := filepath.Join(*reportDir, "capability-retrieval.json")
 	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
+	enterpriseAcceptancePath := filepath.Join(*reportDir, "enterprise-acceptance.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
 
 	commands := []struct {
@@ -80,14 +82,25 @@ func main() {
 		{name: "offline-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineLocalAdmissionSearchAndMaterialize$", "-count=1"}},
 		{name: "offline-scoped-capability-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineScopedCapabilityDiscoveryAndMaterialization$", "-count=1"}},
 		{name: "offline-knowledge-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineKnowledgeIndexSearchReadAndReindex$", "-count=1"}},
+		{name: "offline-m2-claims-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineClaimsAuthorizationAcrossCapabilityKnowledgeAndMaterialization$", "-count=1"}},
+		{name: "enterprise-entra-oidc-e2e", args: []string{"go", "test", "./internal/auth", "-run", "^(TestEntraDelegatedAndWorkloadTokensReachTheSamePolicyModel|TestEntraCompatibilityDenialMatrix)$", "-count=1"}},
+		{name: "enterprise-malformed-claims", args: []string{"go", "test", "./internal/auth", "-run", "^TestJWTValidatorMalformedConfiguredClaimsFailClosed$", "-count=1"}},
+		{name: "enterprise-static-development-regression", args: []string{"go", "test", "./internal/httpserver", "-run", "^(TestAuthMiddlewarePreservesTrustedValidatorIdentity|TestAuthMiddlewareLegacyStaticPathSynthesizesIdentity|TestDevelopmentModeDoesNotInventTrustedIdentity)$", "-count=1"}},
+		{name: "enterprise-ranking-isolation", args: []string{"go", "test", "./internal/httpserver", "-run", "^TestClaimsAuthorizationFiltersLegacySearchAfterRanking$", "-count=1"}},
+		{name: "enterprise-audit-degradation", args: []string{"go", "test", "./internal/catalogue", "-run", "^TestAuditExporterFailureCannotRollbackAuthoritativeState$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
 		{name: "capability-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-capability-eval", "--fixtures", *capabilityFixturePath, "--report", capabilityEvalPath}},
 		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--baseline", *knowledgeBaselinePath, "--report", knowledgeEvalPath}},
 	}
 
 	report := verificationReport{
-		SchemaVersion: 2, Suite: "vnext-m1-deterministic", Passed: true,
-		EvalReport: filepath.ToSlash(rawEvalPath), CapabilityEvalReport: filepath.ToSlash(capabilityEvalPath), KnowledgeEvalReport: filepath.ToSlash(knowledgeEvalPath),
+		SchemaVersion: 2,
+		Suite:         "vnext-m1-deterministic",
+		Passed:        true,
+		EvalReport:                 filepath.ToSlash(rawEvalPath),
+		CapabilityEvalReport:       filepath.ToSlash(capabilityEvalPath),
+		KnowledgeEvalReport:        filepath.ToSlash(knowledgeEvalPath),
+		EnterpriseAcceptanceReport: filepath.ToSlash(enterpriseAcceptancePath),
 	}
 	m1Passed := false
 	for _, command := range commands {
@@ -108,6 +121,18 @@ func main() {
 		"E-degraded-and-failure-modes",
 	} {
 		report.Journeys = append(report.Journeys, journeyResult{Name: name, Passed: m1Passed})
+	}
+
+	enterprisePassed, err := writeEnterpriseAcceptanceReport(enterpriseAcceptancePath, report.Steps)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "skillet-verify: enterprise acceptance report:", err)
+		report.Passed = false
+	} else {
+		report.Journeys = append(report.Journeys, journeyResult{Name: "M2-enterprise-identity-authorization", Passed: enterprisePassed})
+		if !enterprisePassed {
+			report.Passed = false
+		}
+		fmt.Printf("enterprise acceptance report: %s\n", enterpriseAcceptancePath)
 	}
 
 	routingMetrics, err := loadMetricResults(*fixturePath, *baselinePath, rawEvalPath)
