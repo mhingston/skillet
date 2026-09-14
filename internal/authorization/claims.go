@@ -147,6 +147,16 @@ func grantMatchesIdentity(grant Grant, identity authn.Identity) bool {
 }
 
 func ruleMatchesResource(action Action, rule ResourceRule, resource Resource) bool {
+	// Search authorization has two phases. An organisation-only resource is an
+	// eligibility probe: a matching identity may execute retrieval if it owns at
+	// least one grant for that search action, but no scoped result is disclosed
+	// until its authoritative namespace/repository/stable ID is checked below at
+	// the transport boundary. This keeps caller-supplied filters as selectors,
+	// never authority, while allowing repository-scoped grants to use legacy
+	// search operations.
+	if resource.ID == "" && resource.Namespace == "" && resource.Repository == "" && (action == ActionCapabilitySearch || action == ActionKnowledgeSearch) {
+		return true
+	}
 	if rule.Namespace != "" && rule.Namespace != resource.Namespace {
 		return false
 	}
@@ -156,10 +166,9 @@ func ruleMatchesResource(action Action, rule ResourceRule, resource Resource) bo
 	if len(rule.IDs) == 0 {
 		return true
 	}
-	// Search authorization has two phases. An empty ID admits the caller to
-	// search an already-entitled scope; exact ID rules are then applied to every
-	// ranked candidate before disclosure. Non-search operations always require
-	// the exact stable resource identity when IDs are configured.
+	// A scoped search request may be admitted before a concrete candidate is
+	// selected; exact ID rules are still applied to every ranked candidate before
+	// disclosure. Non-search operations always require the exact stable identity.
 	if resource.ID == "" && (action == ActionCapabilitySearch || action == ActionKnowledgeSearch) {
 		return true
 	}
