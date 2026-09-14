@@ -46,9 +46,11 @@ func TestClaimsPolicyAllowDenyMatrix(t *testing.T) {
 		allowed  bool
 		reason   string
 	}{
+		{name: "search probe allows scoped grant", identity: base, action: ActionCapabilitySearch, resource: Resource{OrganizationID: "acme"}, allowed: true, reason: ReasonAllowed},
 		{name: "repo allow", identity: base, action: ActionCapabilitySearch, resource: Resource{OrganizationID: "acme", Namespace: "engineering", Repository: "api"}, allowed: true, reason: ReasonAllowed},
 		{name: "stable id allow", identity: base, action: ActionCapabilityDescribe, resource: Resource{OrganizationID: "acme", Namespace: "engineering", Repository: "worker", ID: "capability-allowed"}, allowed: true, reason: ReasonAllowed},
 		{name: "stable id deny", identity: base, action: ActionCapabilityDescribe, resource: Resource{OrganizationID: "acme", Namespace: "engineering", Repository: "worker", ID: "capability-other"}, reason: ReasonNotEntitled},
+		{name: "non-search org probe denied", identity: base, action: ActionCapabilityDescribe, resource: Resource{OrganizationID: "acme"}, reason: ReasonNotEntitled},
 		{name: "wrong repo deny", identity: base, action: ActionCapabilitySearch, resource: Resource{OrganizationID: "acme", Namespace: "engineering", Repository: "payments"}, reason: ReasonNotEntitled},
 		{name: "wrong namespace deny", identity: base, action: ActionCapabilitySearch, resource: Resource{OrganizationID: "acme", Namespace: "sales", Repository: "api"}, reason: ReasonNotEntitled},
 		{name: "knowledge org allow", identity: base, action: ActionKnowledgeRead, resource: Resource{OrganizationID: "acme", ID: "chunk-1"}, allowed: true, reason: ReasonAllowed},
