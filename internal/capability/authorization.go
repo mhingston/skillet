@@ -11,14 +11,17 @@ func (s *Service) ScopeForRevision(revisionID string) (Scope, bool) {
 	if s == nil || s.index == nil {
 		return Scope{}, false
 	}
+	// Keep this boundary consistent with Search/Describe even when it is the
+	// first capability operation after startup. RefreshGovernance applies yank
+	// state to the routing index before we decide whether this is selectable.
+	if err := s.RefreshGovernance(); err != nil {
+		return Scope{}, false
+	}
 	doc, ok := s.index.Document(revisionID)
 	if !ok || !doc.Searchable {
 		return Scope{}, false
 	}
-	s.governanceMu.RLock()
-	record, governed := s.governance[revisionID]
-	s.governanceMu.RUnlock()
-	if governed && record.Status == StatusYanked {
+	if s.descriptorForDocument(doc).Status == StatusYanked {
 		return Scope{}, false
 	}
 	return s.ScopeForDocument(doc), true
