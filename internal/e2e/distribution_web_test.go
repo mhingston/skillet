@@ -31,9 +31,9 @@ type distributionBrowserValidator struct{}
 
 func (distributionBrowserValidator) Authenticate(string) (authn.Identity, error) {
 	return authn.Identity{
-		Subject:          "distribution-browser",
-		OrganizationID:   "demo",
-		Permissions:      map[string]struct{}{"capability.reader": {}},
+		Subject:        "distribution-browser",
+		OrganizationID: "demo",
+		Permissions:    map[string]struct{}{"capability.reader": {}},
 	}, nil
 }
 
@@ -71,10 +71,10 @@ func TestDistributionBrowserAcceptance(t *testing.T) {
 	if result := syncM1Repository(t, ctx, privateRoot, "private", catalog, packages); result.Admitted != 1 || result.Quarantined != 0 {
 		t.Fatalf("private admission=%+v", result)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/central-skills.git", "demo/central"); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/central-skills.git", "central"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/private-skills.git", "demo/private"); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/private-skills.git", "private"); err != nil {
 		t.Fatal(err)
 	}
 
