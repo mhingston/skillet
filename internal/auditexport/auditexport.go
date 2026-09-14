@@ -140,7 +140,7 @@ func sanitize(value string) string {
 	if len(value) >= len("bearer ") && strings.EqualFold(value[:len("bearer ")], "bearer ") {
 		return "[redacted]"
 	}
-	if len(value) <= MaxFieldBytes {
+	if len(value) <= MaxFieldBytes && utf8.ValidString(value) {
 		return value
 	}
 	for len(value) > MaxFieldBytes || !utf8.ValidString(value) {
