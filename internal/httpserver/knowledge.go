@@ -45,5 +45,5 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 	if !ok || service == nil {
 		return
 	}
-	knowledgemcp.AddTools(server, service)
+	knowledgemcp.AddTools(server, service, app.authorize)
 }
