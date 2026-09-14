@@ -39,6 +39,11 @@ func main() {
 		slog.Error("configuration failed", "error", err)
 		os.Exit(2)
 	}
+	authorizationPolicy, err := configuredAuthorizationPolicy(c)
+	if err != nil {
+		slog.Error("authorization configuration failed", "error", err)
+		os.Exit(2)
+	}
 	if err := os.MkdirAll(c.Server.DataDir, 0700); err != nil {
 		slog.Error("create data directory", "error", err)
 		os.Exit(2)
@@ -147,6 +152,10 @@ func main() {
 		}
 	}
 	if c.Auth.Mode == "oidc" {
+		requiredPermissions := []string{"skills.search", "skills.materialize"}
+		if c.Authorization.Mode == "claims" {
+			requiredPermissions = nil
+		}
 		validator, validateErr := authn.NewOIDCValidator(ctx, authn.OIDCConfig{
 			Issuer:            c.Auth.Issuer,
 			Audience:          c.Auth.Audience,
@@ -154,7 +163,7 @@ func main() {
 			ScopeClaim:        c.Auth.ScopeClaim,
 			RoleClaim:         c.Auth.RoleClaim,
 			AttributeClaims:   c.Auth.AttributeClaims,
-			RequiredScopes:    []string{"skills.search", "skills.materialize"},
+			RequiredScopes:    requiredPermissions,
 			AllowedAlgorithms: []string{"RS256", "RS384", "RS512"},
 		})
 		if validateErr != nil {
@@ -186,6 +195,7 @@ func main() {
 	}
 	app.ConfigureCapabilities(capabilityService)
 	app.ConfigureKnowledge(knowledgeService)
+	app.ConfigureAuthorization(authorizationPolicy)
 	if packageURLTTL, parseErr := time.ParseDuration(c.Packages.SignedURLTTL); parseErr == nil {
 		app.ConfigurePackageURLTTL(packageURLTTL)
 	}
