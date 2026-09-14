@@ -111,7 +111,7 @@ func (p ClaimsPolicy) Authorize(_ context.Context, identity authn.Identity, acti
 			continue
 		}
 		for _, rule := range grant.Resources {
-			if ruleMatchesResource(rule, resource) {
+			if ruleMatchesResource(action, rule, resource) {
 				return Decision{Allowed: true, Reason: ReasonAllowed}
 			}
 		}
@@ -146,7 +146,7 @@ func grantMatchesIdentity(grant Grant, identity authn.Identity) bool {
 	return true
 }
 
-func ruleMatchesResource(rule ResourceRule, resource Resource) bool {
+func ruleMatchesResource(action Action, rule ResourceRule, resource Resource) bool {
 	if rule.Namespace != "" && rule.Namespace != resource.Namespace {
 		return false
 	}
@@ -154,6 +154,13 @@ func ruleMatchesResource(rule ResourceRule, resource Resource) bool {
 		return false
 	}
 	if len(rule.IDs) == 0 {
+		return true
+	}
+	// Search authorization has two phases. An empty ID admits the caller to
+	// search an already-entitled scope; exact ID rules are then applied to every
+	// ranked candidate before disclosure. Non-search operations always require
+	// the exact stable resource identity when IDs are configured.
+	if resource.ID == "" && (action == ActionCapabilitySearch || action == ActionKnowledgeSearch) {
 		return true
 	}
 	for _, id := range rule.IDs {
