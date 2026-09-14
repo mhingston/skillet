@@ -71,11 +71,31 @@ func TestDistributionBrowserAcceptance(t *testing.T) {
 	if result := syncM1Repository(t, ctx, privateRoot, "private", catalog, packages); result.Admitted != 1 || result.Quarantined != 0 {
 		t.Fatalf("private admission=%+v", result)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/central-skills.git", "central"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, "https://github.com/example/private-skills.git", "private"); err != nil {
-		t.Fatal(err)
+	for _, fixture := range []struct {
+		id  string
+		url string
+	}{
+		{id: "demo/central", url: "https://github.com/example/central-skills.git"},
+		{id: "demo/private", url: "https://github.com/example/private-skills.git"},
+	} {
+		result, updateErr := db.ExecContext(ctx, `UPDATE repositories SET url=? WHERE id=?`, fixture.url, fixture.id)
+		if updateErr != nil {
+			t.Fatal(updateErr)
+		}
+		affected, affectedErr := result.RowsAffected()
+		if affectedErr != nil {
+			t.Fatal(affectedErr)
+		}
+		if affected != 1 {
+			t.Fatalf("repository fixture %q update affected %d rows", fixture.id, affected)
+		}
+		var storedURL string
+		if queryErr := db.QueryRowContext(ctx, `SELECT url FROM repositories WHERE id=?`, fixture.id).Scan(&storedURL); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		if storedURL != fixture.url {
+			t.Fatalf("repository fixture %q url=%q want=%q", fixture.id, storedURL, fixture.url)
+		}
 	}
 
 	docs, err := catalog.RoutingDocuments(ctx, "demo")
@@ -148,9 +168,9 @@ func TestDistributionBrowserAcceptance(t *testing.T) {
 		var manifest struct {
 			Name    string `json:"name"`
 			Plugins []struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Strict      bool   `json:"strict"`
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				Strict      bool     `json:"strict"`
 				Skills      []string `json:"skills"`
 				Source      struct {
 					Source string `json:"source"`
