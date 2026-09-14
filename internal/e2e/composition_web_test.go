@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	authn "github.com/mhingston/skillet/internal/auth"
+	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/candidate"
 	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/catalogue"
@@ -20,6 +22,15 @@ import (
 	"github.com/mhingston/skillet/internal/search"
 	"github.com/mhingston/skillet/internal/store"
 )
+
+type compositionBrowserValidator struct{}
+
+func (compositionBrowserValidator) Authenticate(string) (authn.Identity, error) {
+	return authn.Identity{
+		Subject: "composition-browser", OrganizationID: "demo",
+		Permissions: map[string]struct{}{"capability.reader": {}},
+	}, nil
+}
 
 func TestCompositionBrowserAcceptance(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -52,12 +63,13 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 	app := httpserver.NewComplete(nil, nil, index, "demo", candidate.Signer{Key: []byte("composition-browser-candidate-key")}, packages, packageurl.Signer{Key: []byte("composition-browser-package-key")}, catalog, "http://example.invalid")
 	app.ConfigureCapabilities(capabilities)
 	if err := app.ConfigureCollections([]composition.Collection{{
-		ID: "review-kit", Name: "Review kit", Description: "Curated review workflow inputs",
+		ID: "review-kit", Name: "Review kit", Description: "Curated review capability set",
 		Members: []composition.Reference{{ID: "demo/central/review-root", Version: "^2.0.0"}},
 	}}); err != nil { t.Fatal(err) }
 	defer app.ConfigureCollections(nil)
+	defer app.ConfigureAuthorization(nil)
 
-	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "static", StaticToken: "composition-browser-token", OrganizationID: "demo"}))
+	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "static", OrganizationID: "demo", Validator: compositionBrowserValidator{}}))
 	defer server.Close()
 	get := func(path string) (int, string) {
 		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+path, nil)
@@ -89,6 +101,22 @@ func TestCompositionBrowserAcceptance(t *testing.T) {
 		if status != http.StatusBadRequest { t.Fatalf("status=%d body=%s", status, body) }
 		if !strings.Contains(body, "Plan unavailable") || strings.Contains(body, "review-base") {
 			t.Fatalf("unexpected invalid plan response: %s", body)
+		}
+	})
+
+	t.Run("unauthorised_dependency_fails_without_identity_leak", func(t *testing.T) {
+		policy, policyErr := authz.NewClaimsPolicy([]authz.Grant{{
+			Permissions: []string{"capability.reader"},
+			Actions: []authz.Action{authz.ActionCapabilityDescribe},
+			Resources: []authz.ResourceRule{{IDs: []string{"demo/central/review-root"}}},
+		}})
+		if policyErr != nil { t.Fatal(policyErr) }
+		app.ConfigureAuthorization(policy)
+		status, body := get("/ui/composition/preview?collection=review-kit")
+		if status != http.StatusBadRequest { t.Fatalf("status=%d body=%s", status, body) }
+		if !strings.Contains(body, "Plan unavailable") { t.Fatalf("missing refusal: %s", body) }
+		if strings.Contains(body, "demo/central/review-base") || strings.Contains(body, "review-base") {
+			t.Fatalf("unauthorised dependency identity leaked: %s", body)
 		}
 	})
 }
