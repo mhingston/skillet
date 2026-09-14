@@ -38,6 +38,11 @@ const webTemplateSource = `{{define "page"}}<!doctype html>
         <a href="/ui/knowledge" {{if eq .Section "knowledge"}}aria-current="page" class="active"{{end}}>
           <span aria-hidden="true">▤</span><span>Knowledge</span>
         </a>
+        {{if .OperatorVisible}}
+        <a href="/ui/operator">
+          <span aria-hidden="true">⚙</span><span>Operator</span>
+        </a>
+        {{end}}
       </nav>
       <div class="sidebar-note">
         <strong>Read-only browser</strong>
