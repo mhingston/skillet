@@ -11,10 +11,10 @@ type Authorization struct {
 }
 
 type AuthorizationGrant struct {
-	Permissions []string                         `yaml:"permissions"`
-	Attributes  map[string][]string              `yaml:"attributes"`
-	Actions     []string                         `yaml:"actions"`
-	Resources   []AuthorizationResourceRule      `yaml:"resources"`
+	Permissions []string                    `yaml:"permissions"`
+	Attributes  map[string][]string         `yaml:"attributes"`
+	Actions     []string                    `yaml:"actions"`
+	Resources   []AuthorizationResourceRule `yaml:"resources"`
 }
 
 type AuthorizationResourceRule struct {
@@ -36,8 +36,8 @@ func (a *Authorization) validate(auth Auth) error {
 		}
 		return nil
 	}
-	if auth.Mode == "development" {
-		return fmt.Errorf("authorization.mode claims requires authenticated static or oidc mode")
+	if auth.Mode != "oidc" {
+		return fmt.Errorf("authorization.mode claims requires auth.mode oidc")
 	}
 	if len(a.Grants) == 0 {
 		return fmt.Errorf("authorization.mode claims requires at least one grant")
