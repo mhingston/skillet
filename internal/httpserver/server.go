@@ -180,6 +180,7 @@ func NewComplete(log *slog.Logger, ready *Readiness, index *search.Index, organi
 
 func (s *Server) Handler(mcpPath string, maxBodyBytes int64, auth ...AuthConfig) http.Handler {
 	mux := http.NewServeMux()
+	s.addWebRoutes(mux)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -859,7 +860,7 @@ func authMiddleware(next http.Handler, auth AuthConfig) http.Handler {
 			}
 			if auth.Audit != nil {
 					_ = auth.Audit(r.Context(), auth.OrganizationID, "authentication_authorization_failure", map[string]any{"operation": "mcp", "reason": "unsupported_mode"})
-			}
+				}
 			http.Error(w, "authentication mode is not implemented in this slice", http.StatusNotImplemented)
 			return
 		}

@@ -2,16 +2,26 @@ package capability
 
 import "strings"
 
-// ScopeForRevision returns the authoritative configured scope for an immutable
-// routing revision. The boolean is false for revisions that are not present in
-// the current capability index; retained historical revisions may legitimately
-// be absent and can instead be resolved from their source repository policy.
+// ScopeForRevision returns the authoritative configured scope for a currently
+// selectable routing revision. Retained historical or yanked revisions return
+// false so callers that need exact immutable history can resolve the source
+// repository policy instead of accidentally treating the revision as eligible
+// for new selection.
 func (s *Service) ScopeForRevision(revisionID string) (Scope, bool) {
 	if s == nil || s.index == nil {
 		return Scope{}, false
 	}
+	// Keep this boundary consistent with Search/Describe even when it is the
+	// first capability operation after startup. RefreshGovernance applies yank
+	// state to the routing index before we decide whether this is selectable.
+	if err := s.RefreshGovernance(); err != nil {
+		return Scope{}, false
+	}
 	doc, ok := s.index.Document(revisionID)
-	if !ok {
+	if !ok || !doc.Searchable {
+		return Scope{}, false
+	}
+	if s.descriptorForDocument(doc).Status == StatusYanked {
 		return Scope{}, false
 	}
 	return s.ScopeForDocument(doc), true
