@@ -327,3 +327,7 @@ docker compose up --build
 The example configuration is development-only. Production deployments must
 replace it with OIDC or static bearer authentication, HTTPS, signing keys,
 approved repositories, and a persistent data directory.
+
+The supplied Compose file uses a named volume because the image runs as the
+unprivileged UID 65532. If replacing it with a host bind mount, make the host
+data directory writable by UID 65532 before starting the service.
