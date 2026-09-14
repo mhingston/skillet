@@ -8,6 +8,7 @@ import (
 	authn "github.com/mhingston/skillet/internal/auth"
 	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/candidate"
+	"github.com/mhingston/skillet/internal/capability"
 	"github.com/mhingston/skillet/internal/search"
 )
 
@@ -24,7 +25,27 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	mustScope := func(repository string) capability.Scope {
+		scope, err := capability.NewScope("demo", "engineering", repository)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return scope
+	}
+	capabilities, err := capability.New(index, []capability.SourcePolicy{
+		{RepositoryID: "repo-a", Scope: mustScope("repo-a")},
+		{RepositoryID: "repo-b", Scope: mustScope("repo-b")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	s := NewWithSearch(nil, nil, index, "demo", candidate.Signer{Key: []byte("candidate-key")})
+	s.ConfigureCapabilities(capabilities)
+	t.Cleanup(func() {
+		s.ConfigureAuthorization(nil)
+		s.ConfigureCapabilities(nil)
+	})
 	s.ConfigureSearch(50, 50, 20, 60, 10)
 	identity := authn.Identity{Subject: "user-1", OrganizationID: "demo", Permissions: map[string]struct{}{"capability.reader": {}}}
 	ctx := withAuthenticatedIdentity(context.Background(), identity)
@@ -37,11 +58,18 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 	if len(baseline.Candidates) != 2 {
 		t.Fatalf("baseline candidates = %d, want 2", len(baseline.Candidates))
 	}
+	// Select the second-ranked result so removal of an unauthorized higher-ranked
+	// result proves that authorization preserves the surviving semantic evidence.
 	allowed := baseline.Candidates[1]
+	denied := baseline.Candidates[0]
 	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
 		Permissions: []string{"capability.reader"},
 		Actions:     []authz.Action{authz.ActionCapabilitySearch},
-		Resources:   []authz.ResourceRule{{IDs: []string{allowed.Skill.SkillID}}},
+		Resources: []authz.ResourceRule{{
+			Namespace:  "engineering",
+			Repository: allowed.Skill.RepositoryID,
+			IDs:        []string{allowed.Skill.SkillID},
+		}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +86,19 @@ func TestClaimsAuthorizationFiltersLegacySearchAfterRanking(t *testing.T) {
 	got, want := filtered.Candidates[0].Ranking, allowed.Ranking
 	if got.Rank != want.Rank || got.Score != want.Score || got.LexicalRank != want.LexicalRank || got.VectorRank != want.VectorRank {
 		t.Fatalf("authorization changed ranking evidence: got=%+v want=%+v", got, want)
+	}
+
+	// A caller-supplied repository selector is never authority. Restricting the
+	// retrieval query to a repository outside the grant must return no result,
+	// even though that repository contains a semantically matching capability.
+	forbiddenFilter := input
+	forbiddenFilter.Filters.Repositories = []string{denied.Skill.RepositoryID}
+	_, forbidden, err := s.authorizedSearchTool(ctx, nil, forbiddenFilter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(forbidden.Candidates) != 0 {
+		t.Fatalf("unauthorized repository filter broadened visibility: %+v", forbidden.Candidates)
 	}
 
 	missingPermission := withAuthenticatedIdentity(context.Background(), authn.Identity{Subject: "user-2", OrganizationID: "demo"})
@@ -77,6 +118,7 @@ func TestLockedRestoreAuthorizationRunsBeforePackageAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.ConfigureAuthorization(policy)
+	t.Cleanup(func() { s.ConfigureAuthorization(nil) })
 	// ResolveRevision uses catalogue provenance only. If authorization were
 	// applied after restore/package access, this nil package store would produce
 	// a package error instead of the expected authorization denial.
