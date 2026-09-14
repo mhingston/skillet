@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	authn "github.com/mhingston/skillet/internal/auth"
 	authz "github.com/mhingston/skillet/internal/authorization"
 	"github.com/mhingston/skillet/internal/candidate"
 	"github.com/mhingston/skillet/internal/capability"
@@ -24,6 +25,16 @@ import (
 	"github.com/mhingston/skillet/internal/search"
 	"github.com/mhingston/skillet/internal/store"
 )
+
+type collaborationBrowserValidator struct{}
+
+func (collaborationBrowserValidator) Authenticate(string) (authn.Identity, error) {
+	return authn.Identity{
+		Subject:        "collaboration-browser",
+		OrganizationID: "demo",
+		Permissions:    map[string]struct{}{"capability.reader": {}},
+	}, nil
+}
 
 func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -60,7 +71,7 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 		RepositoryID: "central",
 		Scope:        mustCapabilityScope(t, "demo", "", ""),
 		Owner:        "platform-team",
-		Maintainers:  []string{"static"},
+		Maintainers:  []string{"collaboration-browser"},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +100,7 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 	app := httpserver.NewComplete(nil, nil, index, "demo", candidate.Signer{Key: []byte("collaboration-candidate-key")}, packages, packageurl.Signer{Key: []byte("collaboration-package-key")}, catalog, "http://example.invalid")
 	app.ConfigureCapabilities(capabilities)
 	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
-		Permissions: []string{"skills.search"},
+		Permissions: []string{"capability.reader"},
 		Actions: []authz.Action{
 			authz.ActionCapabilityDescribe,
 			authz.ActionCollaborationRead,
@@ -102,7 +113,9 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.ConfigureAuthorization(policy)
-	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{Mode: "static", StaticToken: "browser-token", OrganizationID: "demo"}))
+	server := httptest.NewServer(app.Handler("/mcp", 1<<20, httpserver.AuthConfig{
+		Mode: "static", OrganizationID: "demo", Validator: collaborationBrowserValidator{},
+	}))
 	defer server.Close()
 
 	client := server.Client()
