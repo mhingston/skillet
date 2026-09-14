@@ -53,6 +53,7 @@ func (s *Server) addOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ui/operator", s.webOperator)
 	mux.HandleFunc("POST /ui/operator/audit-probe", s.webOperatorAuditProbe)
 	s.addCompositionWebRoutes(mux)
+	s.addDistributionRoutes(mux)
 }
 
 func (s *Server) webOperator(w http.ResponseWriter, r *http.Request) {
