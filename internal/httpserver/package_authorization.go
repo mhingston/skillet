@@ -3,6 +3,7 @@ package httpserver
 import (
 	"net/http"
 	"strings"
+	"time"
 )
 
 func (s *Server) authorizedPackageHandler(next http.Handler, auth AuthConfig) http.Handler {
@@ -22,13 +23,19 @@ func (s *Server) authorizedPackageHandler(next http.Handler, auth AuthConfig) ht
 			return
 		}
 		ctx := withAuthenticatedIdentity(r.Context(), identity)
-		digest := packageDigestFromPath(r.URL.Path)
+		digest, format := packageIdentityFromPath(r.URL.Path)
 		if digest == "" || s.catalogue == nil {
 			http.Error(w, "package not found", http.StatusNotFound)
 			return
 		}
-		info, err := s.catalogue.RevisionByArchiveDigest(ctx, identity.OrganizationID, digest)
-		if err != nil {
+		payload, err := s.packageSigner.Verify(r.URL.Query().Get("token"), identity.OrganizationID, time.Now())
+		if err != nil || payload.RevisionID == "" || payload.Digest != digest || payload.Format != format {
+			s.metrics.AuthFailures.Add(1)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		info, err := s.catalogue.Revision(ctx, identity.OrganizationID, payload.RevisionID)
+		if err != nil || !revisionContainsPackage(info.ArchiveSHA256TarGZ, info.ArchiveSHA256ZIP, format, digest) {
 			http.Error(w, "package not found", http.StatusNotFound)
 			return
 		}
@@ -40,13 +47,24 @@ func (s *Server) authorizedPackageHandler(next http.Handler, auth AuthConfig) ht
 	})
 }
 
-func packageDigestFromPath(path string) string {
+func packageIdentityFromPath(path string) (string, string) {
 	value := strings.TrimPrefix(path, "/v1/packages/")
 	if strings.HasSuffix(value, ".tar.gz") {
-		return strings.TrimSuffix(value, ".tar.gz")
+		return strings.TrimSuffix(value, ".tar.gz"), "tar.gz"
 	}
 	if strings.HasSuffix(value, ".zip") {
-		return strings.TrimSuffix(value, ".zip")
+		return strings.TrimSuffix(value, ".zip"), "zip"
 	}
-	return ""
+	return "", ""
+}
+
+func revisionContainsPackage(tarDigest, zipDigest, format, digest string) bool {
+	switch format {
+	case "tar.gz":
+		return digest != "" && digest == tarDigest
+	case "zip":
+		return digest != "" && digest == zipDigest
+	default:
+		return false
+	}
 }
