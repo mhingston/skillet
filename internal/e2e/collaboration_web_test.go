@@ -102,16 +102,22 @@ func TestM36CollaborationBrowserWorkflow(t *testing.T) {
 
 	app := httpserver.NewComplete(nil, nil, index, "demo", candidate.Signer{Key: []byte("collaboration-candidate-key")}, packages, packageurl.Signer{Key: []byte("collaboration-package-key")}, catalog, "http://example.invalid")
 	app.ConfigureCapabilities(capabilities)
-	policy, err := authz.NewClaimsPolicy([]authz.Grant{{
-		Permissions: []string{"capability.reader"},
-		Actions: []authz.Action{
-			authz.ActionCapabilityDescribe,
-			authz.ActionCollaborationRead,
-			authz.ActionCollaborationComment,
-			authz.ActionCollaborationWatch,
+	policy, err := authz.NewClaimsPolicy([]authz.Grant{
+		{
+			Permissions: []string{"capability.reader"},
+			Actions:     []authz.Action{authz.ActionCapabilityDescribe},
+			Resources:   []authz.ResourceRule{{}},
 		},
-		Resources: []authz.ResourceRule{{IDs: []string{"demo/central/release"}}},
-	}})
+		{
+			Permissions: []string{"capability.reader"},
+			Actions: []authz.Action{
+				authz.ActionCollaborationRead,
+				authz.ActionCollaborationComment,
+				authz.ActionCollaborationWatch,
+			},
+			Resources: []authz.ResourceRule{{IDs: []string{"demo/central/release"}}},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
