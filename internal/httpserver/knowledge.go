@@ -32,10 +32,11 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 		return
 	}
 	// Capability, deterministic composition, evidence, reviewable proposals,
-	// opt-in experiments/lineage/fitness/improver meta-evaluation, and knowledge
-	// are separate domains but share this bounded MCP transport composition point.
-	// Improvement control-plane tools never execute patches/workers or mutate
-	// canonical source/ranking.
+	// opt-in experiments/lineage/fitness/improver meta-evaluation/curriculum,
+	// and knowledge are separate domains but share this bounded MCP transport
+	// composition point. Improvement control-plane tools never execute patches,
+	// workers, or generated curriculum tasks and never mutate canonical source or
+	// ranking.
 	addCapabilityTools(server, app)
 	addCompositionTools(server, app)
 	addEvidenceTools(server, app)
@@ -44,6 +45,7 @@ func addKnowledgeTools(server *mcp.Server, app *Server) {
 	addLineageTools(server, app)
 	addFitnessTools(server, app)
 	addImproverTools(server, app)
+	addCurriculumTools(server, app)
 	value, ok := knowledgeServices.Load(app)
 	if !ok {
 		return
