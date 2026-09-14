@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	semver "github.com/Masterminds/semver/v3"
+	"github.com/mhingston/skillet/internal/composition"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,6 +44,7 @@ const (
 	FindingCompatibilityLong     FindingCode = "compatibility_too_long"
 	FindingNameDirectoryMismatch FindingCode = "name_directory_mismatch"
 	FindingInvalidVersion        FindingCode = "invalid_version"
+	FindingInvalidComposition    FindingCode = "invalid_composition"
 )
 
 type Finding struct {
@@ -116,6 +118,9 @@ func Validate(fm Frontmatter) []Finding {
 		if _, err := semver.StrictNewVersion(value); err != nil {
 			findings = append(findings, Finding{FindingInvalidVersion, fmt.Sprintf("metadata.version must be valid SemVer 2.0: %v", err)})
 		}
+	}
+	if _, err := composition.ParseMetadata(fm.Metadata); err != nil {
+		findings = append(findings, Finding{FindingInvalidComposition, err.Error()})
 	}
 	return findings
 }
