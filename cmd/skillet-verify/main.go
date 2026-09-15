@@ -52,6 +52,7 @@ type verificationReport struct {
 	KnowledgeEvalReport        string                    `json:"knowledge_eval_report,omitempty"`
 	EnterpriseAcceptanceReport string                    `json:"enterprise_acceptance_report,omitempty"`
 	M3AcceptanceReport         string                    `json:"m3_acceptance_report,omitempty"`
+	M4AcceptanceReport         string                    `json:"m4_acceptance_report,omitempty"`
 }
 
 func main() {
@@ -71,7 +72,15 @@ func main() {
 	knowledgeEvalPath := filepath.Join(*reportDir, "knowledge-retrieval.json")
 	enterpriseAcceptancePath := filepath.Join(*reportDir, "enterprise-acceptance.json")
 	m3AcceptancePath := filepath.Join(*reportDir, "m3-acceptance.json")
+	m4FixturePath := filepath.Join(*reportDir, "m4-integrated.json")
+	m4AcceptancePath := filepath.Join(*reportDir, "m4-acceptance.json")
 	verificationPath := filepath.Join(*reportDir, "verification.json")
+	if err := os.Remove(m4FixturePath); err != nil && !os.IsNotExist(err) {
+		fatal(fmt.Errorf("remove stale M4 fixture report: %w", err))
+	}
+	if err := os.Setenv("SKILLET_M4_ACCEPTANCE_REPORT", m4FixturePath); err != nil {
+		fatal(fmt.Errorf("configure M4 fixture report: %w", err))
+	}
 
 	commands := []struct {
 		name string
@@ -100,20 +109,22 @@ func main() {
 		{name: "m3-evidence-loop-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestEvidenceToImprovementCandidateWorkflowIsReviewOnlyAndDeterministic$", "-count=1"}},
 		{name: "m3-proposal-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestM37ReviewableImprovementProposalWorkflow$", "-count=1"}},
 		{name: "m3-operator-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestOfflineM3OperatorAcceptance$", "-count=1"}},
+		{name: "m4-integrated-e2e", args: []string{"go", "test", "./internal/e2e", "-run", "^TestM47IntegratedCapabilityEvolutionAcceptance$", "-count=1"}},
 		{name: "retrieval-eval", args: []string{"go", "run", "./cmd/skillet-eval", "--fixtures", *fixturePath, "--baseline", *baselinePath, "--report", rawEvalPath}},
 		{name: "capability-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-capability-eval", "--fixtures", *capabilityFixturePath, "--report", capabilityEvalPath}},
 		{name: "knowledge-retrieval-eval", args: []string{"go", "run", "./cmd/skillet-knowledge-eval", "--fixtures", *knowledgeFixturePath, "--baseline", *knowledgeBaselinePath, "--report", knowledgeEvalPath}},
 	}
 
 	report := verificationReport{
-		SchemaVersion:              3,
-		Suite:                      "vnext-m1-m2-m3-deterministic",
+		SchemaVersion:              4,
+		Suite:                      "vnext-m1-m2-m3-m4-deterministic",
 		Passed:                     true,
 		EvalReport:                 filepath.ToSlash(rawEvalPath),
 		CapabilityEvalReport:       filepath.ToSlash(capabilityEvalPath),
 		KnowledgeEvalReport:        filepath.ToSlash(knowledgeEvalPath),
 		EnterpriseAcceptanceReport: filepath.ToSlash(enterpriseAcceptancePath),
 		M3AcceptanceReport:         filepath.ToSlash(m3AcceptancePath),
+		M4AcceptanceReport:         filepath.ToSlash(m4AcceptancePath),
 	}
 	m1Passed := false
 	for _, command := range commands {
@@ -193,6 +204,20 @@ func main() {
 			report.Passed = false
 		}
 		fmt.Printf("M3 acceptance report: %s\n", m3AcceptancePath)
+	}
+
+	m4Report, err := writeM4AcceptanceReport(m4AcceptancePath, m4FixturePath, report.Steps, m3Report)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "skillet-verify: M4 acceptance report:", err)
+		report.Passed = false
+	} else {
+		for _, journey := range m4Report.Journeys {
+			report.Journeys = append(report.Journeys, journeyResult{Name: journey.Name, Passed: journey.Passed})
+		}
+		if !m4Report.Passed {
+			report.Passed = false
+		}
+		fmt.Printf("M4 acceptance report: %s\n", m4AcceptancePath)
 	}
 
 	contents, err := json.MarshalIndent(report, "", "  ")
