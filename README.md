@@ -6,7 +6,7 @@
 
 AI agents are more useful when they can draw on specialised reusable guidance, organisation-specific knowledge, and the right supporting tools for a task. As those resources grow across central and repository-local sources, however, it becomes difficult to discover the right capability safely, difficult to keep knowledge and capability ranking semantics separate, and easy for work to depend on an unclear or changing revision.
 
-Skillet is a single Go service for bounded agent capability discovery, organisational knowledge retrieval, reproducible skill materialisation, lightweight governance, deterministic declared composition, host-native distribution, collaboration, and revision-bound improvement evidence. It preserves the v1 skill registry/materialisation contract while adding verified vNext capability and knowledge domains, opt-in M2 enterprise controls, and bounded M3 human/adoption surfaces behind the same product boundary.
+Skillet is a single Go service for bounded agent capability discovery, organisational knowledge retrieval, reproducible skill materialisation, lightweight governance, deterministic declared composition, host-native distribution, collaboration, revision-bound improvement evidence, and opt-in capability-evolution evidence/control-plane primitives. It preserves the v1 skill registry/materialisation contract while adding verified vNext capability and knowledge domains, opt-in M2 enterprise controls, bounded M3 human/adoption surfaces, and bounded M4 evolution evidence behind the same product boundary.
 
 The shipped v1 experience remains compatible:
 
@@ -35,13 +35,14 @@ The verified vNext surface additionally provides:
 - **Host-native distribution:** project authorised immutable revisions into a deterministic Claude Code marketplace profile without creating a second publishing authority.
 - **Bounded collaboration:** discussions, watches, moderation, and activity are Skillet-owned auxiliary state linked to stable identities; collaboration cannot silently change semantic ranking.
 - **Reviewable improvement proposals:** bind derived evidence to immutable provenance, retain verification attempts, fail closed on stale bases, and never automatically edit canonical source or activate a revision.
-- **Deterministic release proof:** `go run ./cmd/skillet-verify` runs M1 Journey A-E, protected v1/capability/knowledge retrieval metrics, M2 enterprise acceptance, and M3 Journeys F-K with machine-readable evidence and a real-process headless-browser smoke.
+- **Opt-in capability evolution evidence:** issue immutable proposal/base-bound experiments, retain append-only lineage and scoped champion/challenger fitness evidence, compare explicit improver provenance on compatible held-out distributions, propose versioned curriculum/evaluator updates, and exchange signed data-only evidence with external runners without making Skillet an execution engine or model trainer.
+- **Deterministic release proof:** `go run ./cmd/skillet-verify` runs M1 Journeys A-E, protected v1/capability/knowledge retrieval metrics, M2 enterprise acceptance, M3 Journeys F-K, and integrated M4 Journeys L-Q with machine-readable evidence and the existing real-process headless-browser smoke.
 
 Skills may optionally declare `metadata.version` using SemVer 2.0. Exact versions and ranges resolve once to one retained immutable revision; ranges choose the highest stable declared version. Prereleases require an explicit prerelease selector. Unversioned skills remain valid and Git tags are not version authority. M3 composition only follows explicit source-owned dependency metadata or curated collection manifests; it does not invent dependencies, execute them, or automatically upgrade an existing lock. Lockfile commit, tree, and archive SHA-256 fields remain authoritative.
 
-Skillet is a registry/retrieval/distribution boundary, not an agent harness or execution sandbox. The repository ships a harness-neutral `skillet-client` for discovery, digest-verified materialization, lifecycle reporting, and structured feedback. Compatible clients and hosts may report lifecycle observations only when they can truthfully observe the corresponding state.
+Skillet is a registry/retrieval/distribution and bounded evidence/control-plane boundary, not an agent harness, execution sandbox, workflow engine, or model trainer. The repository ships a harness-neutral `skillet-client` for discovery, digest-verified materialization, lifecycle reporting, and structured feedback. Compatible clients and hosts may report lifecycle observations only when they can truthfully observe the corresponding state. M4 external runners execute outside Skillet and return signed, digest-bound evidence only.
 
-The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git/local polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector retrieval primitives, scoped capability discovery, metadata-only MCP tool ingestion, Markdown/OKF knowledge retrieval, explicit backlinks, capability governance, configurable embeddings/listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, opt-in claims-based authorization, MCP search/materialisation, revision-bound lifecycle telemetry, structured feedback, reviewable improvement candidates/proposals, deterministic declared composition, a Claude Code distribution profile, server-rendered human/operator views, bounded collaboration, authoritative local audit events, optional audit export, Prometheus counters, and deterministic M1+M2+M3 release evidence.
+The repository contains a runnable single-node vertical slice: strict configuration validation, SQLite WAL-backed catalogue state, configured Git/local polling, Agent Skills discovery/quarantine, deterministic package archives, content-addressed retention, Bleve-plus-vector retrieval primitives, scoped capability discovery, metadata-only MCP tool ingestion, Markdown/OKF knowledge retrieval, explicit backlinks, capability governance, configurable embeddings/listwise reranking adapters, signed package URLs, locked restoration, OIDC/JWKS validation, opt-in claims-based authorization, MCP search/materialisation, revision-bound lifecycle telemetry, structured feedback, reviewable improvement candidates/proposals, deterministic declared composition, a Claude Code distribution profile, server-rendered human/operator views, bounded collaboration, authoritative local audit events, optional audit export, M4 experiments/lineage/scoped fitness/provenance/meta-eval/curriculum/external-runner evidence, Prometheus counters, and deterministic M1+M2+M3+M4 release evidence.
 
 ## Local development
 
@@ -53,7 +54,7 @@ go vet ./...
 go run ./cmd/skillet -config skillet.example.yaml
 ```
 
-For the complete deterministic vNext release proof (M1 + M2 + M3), run:
+For the complete deterministic vNext release proof (M1 + M2 + M3 + M4), run:
 
 ```sh
 go run ./cmd/skillet-verify
@@ -61,7 +62,7 @@ go run ./cmd/skillet-verify
 
 The M3 gate drives a real local Skillet binary with headless Chrome/Chromium. Set `SKILLET_BROWSER_BIN` when the browser is not discoverable on `PATH` or in the common macOS/Windows install locations.
 
-See [`docs/m1-release-gate.md`](docs/m1-release-gate.md) for the Journey A-E contract, [`docs/enterprise-operations.md`](docs/enterprise-operations.md) for the M2 enterprise controls, and [`docs/m3-release-gate.md`](docs/m3-release-gate.md) for M3 Journeys F-K and acceptance evidence.
+See [`docs/m1-release-gate.md`](docs/m1-release-gate.md) for the Journey A-E contract, [`docs/enterprise-operations.md`](docs/enterprise-operations.md) for the M2 enterprise controls, [`docs/m3-release-gate.md`](docs/m3-release-gate.md) for M3 Journeys F-K, and [`docs/m4-release-gate.md`](docs/m4-release-gate.md) for M4 Journeys L-Q, enablement, trust boundaries, and acceptance evidence.
 
 ### Local skill sources
 
@@ -185,15 +186,15 @@ The example starts in explicit development mode with no external database or mod
 
 The service is intentionally a single-node Go modular monolith backed by SQLite for its current verified surface. Operators configure approved sources. Capability scope constrains eligibility before ranking; capability and knowledge models/indexes remain separate. Admitted skill packages retain exact commits/trees and SHA-256 digests, while metadata-only tools carry no execution authority.
 
-The core service will not execute skill scripts or discovered tools, orchestrate workflows, infer authoritative semantic graph relationships, generate final RAG answers, or write to client harness directories. Deterministic composition is limited to explicit source-owned relationships/collections and immutable plan/lock generation; it is not an execution engine. The generic client performs explicit, user-invoked skill materialization after verifying the returned archive digest.
+The core service will not execute skill scripts or discovered tools, orchestrate workflows, infer authoritative semantic graph relationships, generate final RAG answers, write to client harness directories, train models, or execute external-runner workloads. Deterministic composition is limited to explicit source-owned relationships/collections and immutable plan/lock generation; M4 external runners receive data-only bounded dispatches and execute outside Skillet. The generic client performs explicit, user-invoked skill materialization after verifying the returned archive digest.
 
 A compatible MCP host must already provide shell/download capability, outbound HTTPS, permission to write to a user cache outside the repository, and permission to read the extracted `SKILL.md`. Hosts without those capabilities may be search-only. Skillet is not marketed as universally compatible with every MCP client.
 
 The remote materialisation flow returns a signed immutable package URL, a fixed POSIX or PowerShell acquisition command, an external cache destination, a deterministic `skillet-lock.json` entry, and a lifecycle reference bound to the exact revision/package/materialisation. The server never writes to the MCP client filesystem and never executes skill-provided scripts.
 
-Lifecycle observations and structured feedback are optional evidence. Derived improvement candidates and M3 improvement proposals are review artefacts. None of these authorize execution, change active host state, alter retrieval ranking, deprecate a revision, edit `SKILL.md`, or apply source changes automatically.
+Lifecycle observations and structured feedback are optional evidence. Derived improvement candidates, M3 improvement proposals, and M4 experiment/lineage/fitness/provenance/curriculum/runner records are review or evidence artefacts. None of these authorize execution, change active host state, alter retrieval ranking, deprecate a revision, edit `SKILL.md`, mutate protected evaluators in place, or apply/promote source changes automatically.
 
-See [the implementation handoff](docs/implementation-handoff.md), [M1 release gate](docs/m1-release-gate.md), [enterprise operations](docs/enterprise-operations.md), [M3 release gate](docs/m3-release-gate.md), and [architecture decisions](docs/adr/) for the verified boundaries and deferred scope.
+See [the implementation handoff](docs/implementation-handoff.md), [M1 release gate](docs/m1-release-gate.md), [enterprise operations](docs/enterprise-operations.md), [M3 release gate](docs/m3-release-gate.md), [M4 release gate](docs/m4-release-gate.md), and [architecture decisions](docs/adr/) for the verified boundaries and deferred scope.
 
 ## Generic client
 
@@ -268,16 +269,17 @@ Supported categories are `step_failed`, `workaround_required`, `user_correction`
 8. Skill materialisation returns a short-lived package URL, integrity digest, fixed acquisition command, lockfile entry, and lifecycle reference tied to the exact materialisation.
 9. A capable host may report truthful lifecycle observations and bounded feedback against that immutable reference.
 10. Maintainers may inspect deterministic improvement candidates and prepare provenance-bound reviewable proposals; source/catalogue/ranking/governance remain unchanged until an explicit human-reviewed change is made through the owning source workflow.
+11. When explicitly enabled and authorized, M4 can issue immutable experiments from reviewed proposals, retain lineage/scoped fitness/provenance/curriculum evidence, and exchange signed data-only dispatch/result records with external runners; those records do not automatically mutate source, ranking, governance, protected evaluators, or canonical promotion state.
 
-Skillet never silently selects or installs a skill, puts full package contents or full tool schemas into ordinary search results, executes discovered tools/scripts, cross-ranks organisational knowledge with capabilities, writes to the client filesystem, changes ranking from telemetry/collaboration, invents undeclared dependencies, or automatically rewrites source from feedback/proposals.
+Skillet never silently selects or installs a skill, puts full package contents or full tool schemas into ordinary search results, executes discovered tools/scripts or external-runner workloads, cross-ranks organisational knowledge with capabilities, writes to the client filesystem, changes ranking from telemetry/collaboration/M4 evidence, invents undeclared dependencies, or automatically rewrites/promotes source from feedback/proposals/experiments.
 
 ## Trust and security boundary
 
 Skillet is a distribution and retrieval service for sources that an organisation has already approved. Source admission is configuration-controlled for the current product; there is no public submission or public marketplace workflow.
 
-The service protects the distribution path with exact commits/trees, specification validation, safe deterministic packaging, SHA-256 integrity, durable historical retention, organisation/scoped eligibility, authentication, optional fine-grained claims authorization, short-lived package URLs, governance state and audit events. Source repositories, knowledge documents, tool metadata, package files, lifecycle reports, feedback summaries, collaboration text and proposal evidence remain untrusted data and are never treated as instructions by the retrieval pipeline.
+The service protects the distribution path with exact commits/trees, specification validation, safe deterministic packaging, SHA-256 integrity, durable historical retention, organisation/scoped eligibility, authentication, optional fine-grained claims authorization, short-lived package URLs, governance state and audit events. Source repositories, knowledge documents, tool metadata, package files, lifecycle reports, feedback summaries, collaboration text, proposal evidence, curriculum feedback, and external-runner payloads remain untrusted data and are never treated as instructions by the retrieval pipeline.
 
-Skillet does not claim to certify that a skill is safe to execute or that a discovered external tool should be invoked. It does not execute scripts/tools, enforce `allowed-tools`, sandbox a consuming agent, or replace an organisation's source-repository review, CI controls, marketplace approval, endpoint protection, or runtime authorization. Those controls belong upstream and in the consuming host. In particular, a prompt that asks an agent to request confirmation is not an enforcement boundary; real execution authorization must be implemented by the host or infrastructure.
+Skillet does not claim to certify that a skill is safe to execute or that a discovered external tool should be invoked. It does not execute scripts/tools or runner workloads, enforce `allowed-tools`, sandbox a consuming agent, train models, or replace an organisation's source-repository review, CI controls, marketplace approval, endpoint protection, runtime authorization, or external-runner isolation. Those controls belong upstream and in the consuming host/runner infrastructure. In particular, a prompt that asks an agent to request confirmation is not an enforcement boundary; real execution authorization must be implemented by the host or infrastructure.
 
 ## Retrieval evaluation
 
@@ -289,7 +291,7 @@ The authoritative aggregate command is:
 go run ./cmd/skillet-verify
 ```
 
-It protects v1 skill-routing baseline metrics, scoped capability top-1/recall/multi-recall/per-kind recall/negative activation/scope leakage/kind confusion, knowledge retrieval metrics, the integrated M1 Journey A-E acceptance result, M2 enterprise identity/authorization acceptance, and M3 Journey F-K human/adoption acceptance. `artifacts/verification/m3-acceptance.json` records the browser, composition, distribution, collaboration, proposal, operator, preserved-M1/M2, and Go verification evidence.
+It protects v1 skill-routing baseline metrics, scoped capability top-1/recall/multi-recall/per-kind recall/negative activation/scope leakage/kind confusion, knowledge retrieval metrics, the integrated M1 Journeys A-E acceptance result, M2 enterprise identity/authorization acceptance, M3 Journeys F-K human/adoption acceptance, and integrated M4 Journeys L-Q capability-evolution acceptance. `artifacts/verification/m4-acceptance.json` records default-off isolation, experiment/provenance/lineage/fitness/meta-eval/curriculum/runner security evidence and preserved M1-M3 status alongside the existing M3 evidence.
 
 The real demonstration-corpus admission/search test is opt-in and never
 vendors the corpus:
@@ -303,18 +305,18 @@ is covered by `TestRemoteMCPSearchMaterializeExecuteAndRestore`.
 
 ## Future work
 
-The verified M1 + M2 + M3 surface intentionally stops before execution brokerage, workflow orchestration, automatic proposal application, generated-answer workflows, public submission/marketplace authority, and distributed operation. Relevant future work includes:
+The verified M1 + M2 + M3 + M4 surface intentionally stops before execution brokerage inside Skillet, workflow orchestration, automatic proposal application/promotion, autonomous model training, generated-answer workflows, public submission/marketplace authority, and distributed operation. Relevant future work includes:
 
 - **Richer governance:** human admission/review workflows, stronger publisher identity, catalogue audits, stale-description/overlap analysis, richer revocation policy and organisation-specific approval integrations.
 - **Retrieval quality/scale:** larger evaluated corpora, diversity-aware ranking, query rewriting, learned routing where justified, larger-scale vector indexes, and human relevance judgements while preserving capability/knowledge domain separation.
 - **Knowledge/source integrations:** source-specific Confluence/Jira/Snowflake-style harvesters, richer freshness policy, and graph-assisted discovery only where provenance/authority semantics are explicit.
 - **Distribution/provenance:** package signatures or attestations, object-storage-backed packages, federation, additional reviewed host profiles, and stronger retained-version policies.
 - **Security integrations:** optional integration with an organisation’s existing repository/marketplace scanners, policy engines, SARIF pipelines, and approval records. Skillet should consume trusted decisions rather than become a general-purpose malware scanner or execution sandbox.
-- **Evidence/proposal workflows:** richer external review/export/integration for prepared improvement proposals while keeping application/merge and ranking/governance changes explicit and human reviewed.
+- **Evidence/proposal workflows:** richer external review/export/integration for prepared improvement proposals and M4 evidence while keeping application/merge/promotion and ranking/governance changes explicit and human reviewed.
 - **Client integrations:** native host materialisation, automatic resource-link downloads, richer host lifecycle integration, and lockfile maintenance by capable MCP hosts.
 - **Operations and scale:** PostgreSQL/object storage adapters, distributed search, horizontal deployment, backup/restore tooling, richer dashboards, and additional MCP/browser compatibility testing.
 
-These items should be driven by pilot evidence. Dynamic tool execution/brokering, automatic capability execution/activation, public submissions, workflow orchestration, automatic source mutation/application, generated final answers, and a general-purpose security marketplace remain outside Skillet’s current product boundary unless that boundary is deliberately revisited.
+These items should be driven by pilot evidence. Dynamic tool execution/brokering inside Skillet, automatic capability execution/activation, public submissions, workflow orchestration, automatic source mutation/application/promotion, generated final answers, autonomous training, and a general-purpose security marketplace remain outside Skillet’s current product boundary unless that boundary is deliberately revisited. M4's external-runner protocol is evidence exchange across that boundary, not execution brokerage.
 
 ## Container deployment
 
