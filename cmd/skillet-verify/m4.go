@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -94,7 +95,7 @@ var m4RequiredDigests = []string{
 }
 
 func writeM4AcceptanceReport(path, fixturePath string, steps []stepResult, m3 m3AcceptanceReport) (m4AcceptanceReport, error) {
-	fixtureContents, err := os.ReadFile(fixturePath)
+	fixtureContents, err := readM4FixtureEvidence(fixturePath)
 	if err != nil {
 		return m4AcceptanceReport{}, fmt.Errorf("read M4 fixture evidence: %w", err)
 	}
@@ -178,4 +179,25 @@ func writeM4AcceptanceReport(path, fixturePath string, steps []stepResult, m3 m3
 		return m4AcceptanceReport{}, fmt.Errorf("write M4 acceptance report: %w", err)
 	}
 	return report, nil
+}
+
+func readM4FixtureEvidence(path string) ([]byte, error) {
+	contents, err := os.ReadFile(path)
+	if err == nil || !os.IsNotExist(err) || filepath.IsAbs(path) {
+		return contents, err
+	}
+
+	// Go test executes package tests with the package directory as cwd. The
+	// verifier intentionally passes its report path through the environment so
+	// the focused E2E remains runnable on its own; normalize that package-relative
+	// output back into the verifier's repository-root artifact directory.
+	packageRelative := filepath.Join("internal", "e2e", path)
+	contents, nestedErr := os.ReadFile(packageRelative)
+	if nestedErr != nil {
+		return nil, err
+	}
+	if writeErr := os.WriteFile(path, contents, 0o644); writeErr != nil {
+		return nil, fmt.Errorf("normalize package-relative M4 fixture evidence: %w", writeErr)
+	}
+	return contents, nil
 }
