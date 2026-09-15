@@ -62,6 +62,8 @@ The MCP endpoint is now available at:
 http://localhost:8080/mcp
 ```
 
+You can also browse the human-facing catalogue at `http://localhost:8080/ui`.
+
 Check that discovery works:
 
 ```sh
@@ -204,7 +206,7 @@ go vet ./...
 Start with these when you need more than the quick path above:
 
 - [`docs/scoped-capabilities.md`](docs/scoped-capabilities.md) — capability sources, scope and lifecycle.
-- [`docs/knowledge-okf.md`](docs/knowledge-okf.md) — organisational knowledge and OKF ingestion.
+- [`docs/okf-knowledge.md`](docs/okf-knowledge.md) — organisational knowledge and OKF ingestion.
 - [`docs/capability-composition.md`](docs/capability-composition.md) — declared dependencies and deterministic lock plans.
 - [`docs/claude-code-marketplace-distribution.md`](docs/claude-code-marketplace-distribution.md) — Claude Code distribution profile.
 - [`docs/enterprise-operations.md`](docs/enterprise-operations.md) — production authentication, authorisation and operations.
