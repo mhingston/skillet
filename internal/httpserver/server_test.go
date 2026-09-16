@@ -350,6 +350,23 @@ func TestMaterializeOmittedClientReturnsBothPackageVariants(t *testing.T) {
 	}
 }
 
+func TestMaterializeUsesDefaultPackageURLTTL(t *testing.T) {
+	s, first, _ := lockedMaterializeFixture(t)
+	token, err := s.signer.Sign(candidate.Payload{Version: 1, OrganizationID: "demo", RevisionID: first.RevisionID, QueryID: "query", IssuedAt: time.Now().Add(-time.Second).Unix(), ExpiresAt: time.Now().Add(time.Minute).Unix()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	_, out, err := s.materializeTool(context.Background(), nil, materializeInput{CandidateID: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	remaining := out.Package.ExpiresAt.Sub(started)
+	if remaining < packageurl.DefaultSignedURLTTL-time.Second || remaining > packageurl.DefaultSignedURLTTL+time.Second {
+		t.Fatalf("package URL TTL = %s, want about %s", remaining, packageurl.DefaultSignedURLTTL)
+	}
+}
+
 func TestMaterializeToolRequiresExactlyOneResolutionMode(t *testing.T) {
 	s, first, _ := lockedMaterializeFixture(t)
 	locked := &lockedInput{SkillID: first.SkillID, RepositoryID: first.RepositoryID, Path: first.Path, Commit: first.Commit, Tree: first.Tree, ArchiveSHA256: first.ArchiveSHA256TarGZ, Format: "tar.gz"}

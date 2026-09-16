@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhingston/skillet/internal/packageurl"
 	"gopkg.in/yaml.v3"
 )
 
@@ -183,7 +184,7 @@ func (c *Config) Validate() error {
 		c.Packages.SigningKeyEnv = "SKILLET_PACKAGE_SIGNING_KEY"
 	}
 	if c.Packages.SignedURLTTL == "" {
-		c.Packages.SignedURLTTL = "5m"
+		c.Packages.SignedURLTTL = packageurl.DefaultSignedURLTTL.String()
 	} else if ttl, err := time.ParseDuration(c.Packages.SignedURLTTL); err != nil || ttl <= 0 || ttl > 24*time.Hour {
 		return errors.New("packages.signed_url_ttl must be a positive duration")
 	}

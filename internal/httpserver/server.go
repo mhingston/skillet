@@ -727,7 +727,7 @@ func (s *Server) materializeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	_ = archive.Close()
 	ttl := s.packageURLTTL
 	if ttl <= 0 {
-		ttl = 5 * time.Minute
+		ttl = packageurl.DefaultSignedURLTTL
 	}
 	expires := time.Now().Add(ttl)
 	token, err := s.packageSigner.Sign(packageurl.Payload{Version: 1, OrganizationID: organizationID, Digest: digest, Format: format, ExpiresAt: expires.Unix()})

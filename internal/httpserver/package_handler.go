@@ -27,7 +27,7 @@ func PackageHandlerWithMetricsAndAudit(store *packagestore.Store, signer package
 
 func PackageHandlerWithMetricsAndAuditTTL(store *packagestore.Store, signer packageurl.Signer, organizationID string, metrics *Metrics, audit PackageAuditFunc, urlTTL time.Duration) http.Handler {
 	if urlTTL <= 0 {
-		urlTTL = 5 * time.Minute
+		urlTTL = packageurl.DefaultSignedURLTTL
 	}
 	cacheMaxAge := int(urlTTL / time.Second)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
