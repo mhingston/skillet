@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mhingston/skillet/internal/packageurl"
 )
 
 func writeConfig(t *testing.T, s string) string {
@@ -21,7 +23,7 @@ func TestLoadValidDevelopmentConfigAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Server.Listen != ":8080" || c.Search.DefaultLimit != 5 || c.Repositories[0].PollInterval.String() != "1m0s" {
+	if c.Server.Listen != ":8080" || c.Packages.SignedURLTTL != packageurl.DefaultSignedURLTTL.String() || c.Search.DefaultLimit != 5 || c.Repositories[0].PollInterval.String() != "1m0s" {
 		t.Fatalf("defaults not applied: %+v", c)
 	}
 }

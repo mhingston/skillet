@@ -21,8 +21,6 @@ import (
 
 var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-const defaultURLTTL = 5 * time.Minute
-
 // Restorer resolves and verifies locked packages for one organisation.
 type Restorer struct {
 	OrganizationID string
@@ -148,7 +146,7 @@ func (r *Restorer) resolve(ctx context.Context, skillID string, entry lockfile.E
 	}
 	ttl := r.URLTTL
 	if ttl <= 0 {
-		ttl = defaultURLTTL
+		ttl = packageurl.DefaultSignedURLTTL
 	}
 	expires := now.Add(ttl)
 	token, err := r.PackageSigner.Sign(packageurl.Payload{Version: 1, OrganizationID: r.OrganizationID, Digest: entry.Integrity.Archive, Format: entry.Integrity.Format, ExpiresAt: expires.Unix()})
