@@ -13,15 +13,18 @@ import (
 // OperatorRepositoryStatus is a bounded operational projection. Source and
 // startup configuration remain authoritative and are deliberately read-only.
 type OperatorRepositoryStatus struct {
-	ID                 string
-	URL                string
-	Ref                string
-	TrustLevel         string
-	Owner              string
-	ActiveSkills       int
-	Quarantined        int
-	LastReconcileEvent string
-	LastReconciledAt   string
+	ID                     string
+	URL                    string
+	Ref                    string
+	TrustLevel             string
+	Owner                  string
+	ActiveSkills           int
+	QuarantinedRevisions   int
+	CurrentQuarantined     int
+	CurrentQuarantineKnown bool
+	CurrentSnapshotCommit  string
+	LastReconcileEvent     string
+	LastReconciledAt       string
 }
 
 type OperatorFinding struct {
@@ -52,11 +55,12 @@ type OperatorAuditEvent struct {
 }
 
 type OperatorSnapshot struct {
-	Repositories   []OperatorRepositoryStatus
-	Quarantined    []OperatorQuarantine
-	AuditEvents    []OperatorAuditEvent
-	FeedbackCount  int
-	LifecycleCount int
+	Repositories          []OperatorRepositoryStatus
+	CurrentQuarantined    []OperatorQuarantine
+	HistoricalQuarantined []OperatorQuarantine
+	AuditEvents           []OperatorAuditEvent
+	FeedbackCount         int
+	LifecycleCount        int
 }
 
 type AuditExportStatus struct {
@@ -84,18 +88,29 @@ func (s *Store) OperatorSnapshot(ctx context.Context, organizationID string, aud
 		(SELECT COUNT(*) FROM skills sk WHERE sk.organization_id=r.organization_id AND sk.repository_id=r.id AND sk.active_revision_id IS NOT NULL),
 		(SELECT COUNT(*) FROM skill_revisions sr JOIN skills sk ON sk.id=sr.skill_id WHERE sk.organization_id=r.organization_id AND sk.repository_id=r.id AND sr.state='quarantined'),
 		COALESCE((SELECT ae.event_type FROM audit_events ae WHERE ae.organization_id=r.organization_id AND ae.repository_id=r.id AND ae.event_type IN ('repository_sync_succeeded','repository_sync_failed') ORDER BY ae.rowid DESC LIMIT 1), ''),
-		COALESCE((SELECT ae.occurred_at FROM audit_events ae WHERE ae.organization_id=r.organization_id AND ae.repository_id=r.id AND ae.event_type IN ('repository_sync_succeeded','repository_sync_failed') ORDER BY ae.rowid DESC LIMIT 1), '')
+		COALESCE((SELECT ae.occurred_at FROM audit_events ae WHERE ae.organization_id=r.organization_id AND ae.repository_id=r.id AND ae.event_type IN ('repository_sync_succeeded','repository_sync_failed') ORDER BY ae.rowid DESC LIMIT 1), ''),
+		COALESCE((SELECT ae.details_json FROM audit_events ae WHERE ae.organization_id=r.organization_id AND ae.repository_id=r.id AND ae.event_type IN ('repository_sync_succeeded','repository_sync_failed') ORDER BY ae.rowid DESC LIMIT 1), '{}')
 		FROM repositories r WHERE r.organization_id=? ORDER BY r.id`, organizationID)
 	if err != nil {
 		return OperatorSnapshot{}, err
 	}
 	for rows.Next() {
 		var status OperatorRepositoryStatus
-		if err := rows.Scan(&status.ID, &status.URL, &status.Ref, &status.TrustLevel, &status.Owner, &status.ActiveSkills, &status.Quarantined, &status.LastReconcileEvent, &status.LastReconciledAt); err != nil {
+		var lastReconcileDetails string
+		if err := rows.Scan(&status.ID, &status.URL, &status.Ref, &status.TrustLevel, &status.Owner, &status.ActiveSkills, &status.QuarantinedRevisions, &status.LastReconcileEvent, &status.LastReconciledAt, &lastReconcileDetails); err != nil {
 			rows.Close()
 			return OperatorSnapshot{}, err
 		}
 		status.URL = redactOperatorURL(status.URL)
+		if status.LastReconcileEvent == "repository_sync_succeeded" {
+			var details struct {
+				Commit string `json:"commit"`
+			}
+			if err := json.Unmarshal([]byte(lastReconcileDetails), &details); err == nil && strings.TrimSpace(details.Commit) != "" {
+				status.CurrentSnapshotCommit = details.Commit
+				status.CurrentQuarantineKnown = true
+			}
+		}
 		snapshot.Repositories = append(snapshot.Repositories, status)
 	}
 	if err := rows.Err(); err != nil {
@@ -103,6 +118,16 @@ func (s *Store) OperatorSnapshot(ctx context.Context, organizationID string, aud
 		return OperatorSnapshot{}, err
 	}
 	rows.Close()
+
+	for i := range snapshot.Repositories {
+		repository := &snapshot.Repositories[i]
+		if !repository.CurrentQuarantineKnown {
+			continue
+		}
+		if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM skill_revisions sr JOIN skills sk ON sk.id=sr.skill_id WHERE sk.organization_id=? AND sk.repository_id=? AND sr.state='quarantined' AND sr.commit_sha=?`, organizationID, repository.ID, repository.CurrentSnapshotCommit).Scan(&repository.CurrentQuarantined); err != nil {
+			return OperatorSnapshot{}, err
+		}
+	}
 
 	quarantineRows, err := s.DB.QueryContext(ctx, `SELECT sr.id, sr.skill_id, sk.repository_id, sk.relative_path, sr.name, sr.commit_sha, sr.tree_sha, sr.validation_result_json
 		FROM skill_revisions sr JOIN skills sk ON sk.id=sr.skill_id
@@ -124,13 +149,46 @@ func (s *Store) OperatorSnapshot(ctx context.Context, organizationID string, aud
 				item.Findings = append(item.Findings, OperatorFinding{Code: string(finding.Code), Message: boundedOperatorText(finding.Message, 320)})
 			}
 		}
-		snapshot.Quarantined = append(snapshot.Quarantined, item)
+		snapshot.HistoricalQuarantined = append(snapshot.HistoricalQuarantined, item)
 	}
 	if err := quarantineRows.Err(); err != nil {
 		quarantineRows.Close()
 		return OperatorSnapshot{}, err
 	}
 	quarantineRows.Close()
+
+	for _, repository := range snapshot.Repositories {
+		if !repository.CurrentQuarantineKnown || repository.CurrentQuarantined == 0 {
+			continue
+		}
+		currentRows, err := s.DB.QueryContext(ctx, `SELECT sr.id, sr.skill_id, sk.repository_id, sk.relative_path, sr.name, sr.commit_sha, sr.tree_sha, sr.validation_result_json
+			FROM skill_revisions sr JOIN skills sk ON sk.id=sr.skill_id
+			WHERE sk.organization_id=? AND sk.repository_id=? AND sr.state='quarantined' AND sr.commit_sha=?
+			ORDER BY sr.rowid DESC LIMIT 50`, organizationID, repository.ID, repository.CurrentSnapshotCommit)
+		if err != nil {
+			return OperatorSnapshot{}, err
+		}
+		for currentRows.Next() {
+			var item OperatorQuarantine
+			var encodedFindings string
+			if err := currentRows.Scan(&item.RevisionID, &item.SkillID, &item.RepositoryID, &item.Path, &item.Name, &item.Commit, &item.Tree, &encodedFindings); err != nil {
+				currentRows.Close()
+				return OperatorSnapshot{}, err
+			}
+			var findings []skillspec.Finding
+			if err := json.Unmarshal([]byte(encodedFindings), &findings); err == nil {
+				for _, finding := range findings {
+					item.Findings = append(item.Findings, OperatorFinding{Code: string(finding.Code), Message: boundedOperatorText(finding.Message, 320)})
+				}
+			}
+			snapshot.CurrentQuarantined = append(snapshot.CurrentQuarantined, item)
+		}
+		if err := currentRows.Err(); err != nil {
+			currentRows.Close()
+			return OperatorSnapshot{}, err
+		}
+		currentRows.Close()
+	}
 
 	auditRows, err := s.DB.QueryContext(ctx, `SELECT event_type, COALESCE(actor_type, ''), COALESCE(actor_id, ''), COALESCE(repository_id, ''), COALESCE(skill_id, ''), COALESCE(revision_id, ''), COALESCE(request_id, ''), occurred_at
 		FROM audit_events WHERE organization_id=? ORDER BY rowid DESC LIMIT ?`, organizationID, auditLimit)

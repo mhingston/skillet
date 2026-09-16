@@ -116,6 +116,56 @@ func TestRecordQuarantinePreservesVersionMetadata(t *testing.T) {
 	}
 }
 
+func TestOperatorSnapshotSeparatesCurrentAndHistoricalQuarantine(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "catalogue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	catalog := New(db)
+	repo := Repository{ID: "skills", OrganizationID: "demo", URL: "file:///tmp/skills", Ref: "working-tree", TrustLevel: "approved", Owner: "local"}
+
+	old := discovery.Skill{RelativePath: "old", State: discovery.Quarantined, Frontmatter: skillspec.Frontmatter{Name: "old"}, Findings: []skillspec.Finding{{Code: skillspec.FindingInvalidVersion, Message: "old"}}}
+	if err := catalog.RecordQuarantine(ctx, repo, old, "old-commit", "old-tree"); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.RecordAudit(ctx, "demo", "repository_sync_succeeded", map[string]any{"repository_id": "demo/skills", "commit": "new-commit"}); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := catalog.OperatorSnapshot(ctx, "demo", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Repositories) != 1 {
+		t.Fatalf("repositories = %d, want 1", len(snapshot.Repositories))
+	}
+	status := snapshot.Repositories[0]
+	if status.QuarantinedRevisions != 1 || !status.CurrentQuarantineKnown || status.CurrentQuarantined != 0 {
+		t.Fatalf("initial quarantine status = %+v, want one historical and zero current", status)
+	}
+	if len(snapshot.CurrentQuarantined) != 0 || len(snapshot.HistoricalQuarantined) != 1 {
+		t.Fatalf("initial quarantine lists = current %d historical %d", len(snapshot.CurrentQuarantined), len(snapshot.HistoricalQuarantined))
+	}
+
+	current := discovery.Skill{RelativePath: "current", State: discovery.Quarantined, Frontmatter: skillspec.Frontmatter{Name: "current"}, Findings: []skillspec.Finding{{Code: skillspec.FindingInvalidVersion, Message: "current"}}}
+	if err := catalog.RecordQuarantine(ctx, repo, current, "new-commit", "new-tree"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = catalog.OperatorSnapshot(ctx, "demo", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status = snapshot.Repositories[0]
+	if status.QuarantinedRevisions != 2 || status.CurrentQuarantined != 1 {
+		t.Fatalf("updated quarantine status = %+v, want two historical and one current", status)
+	}
+	if len(snapshot.CurrentQuarantined) != 1 || snapshot.CurrentQuarantined[0].Name != "current" {
+		t.Fatalf("updated current quarantine = %+v", snapshot.CurrentQuarantined)
+	}
+}
+
 func TestRecordAuditPersistsStructuredIdentityFields(t *testing.T) {
 	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "catalogue.db"))
 	if err != nil {

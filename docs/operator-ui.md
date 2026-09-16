@@ -30,13 +30,15 @@ The organisation is taken from the trusted authenticated identity. The UI does n
 The view exposes bounded operational projections only:
 
 - registered repositories and their source URL/ref/trust/owner as read-only values;
-- active and quarantined revision counts plus the last recorded repository reconciliation outcome;
-- quarantined immutable revisions and bounded validation findings;
+- active skill counts, current quarantine counts from the latest successful source snapshot, and historical quarantined revision counts;
+- current quarantined entries plus historical immutable revisions and bounded validation findings;
 - structured feedback and lifecycle evidence counts;
 - recent audit event envelope fields, excluding arbitrary `details_json`;
 - runtime readiness/reconciliation counters already owned by the server;
 - whether capability/knowledge services and claims authorization are configured;
 - audit exporter enabled/attempt/failure counters when the configured exporter exposes them.
+
+The repository card distinguishes current quarantine from historical quarantine. Current quarantine is derived from the latest successful reconciliation commit; if a repository has no successful snapshot, its current status is shown as unknown rather than zero. Historical quarantined revisions are retained as immutable audit evidence and the UI only lists a bounded recent subset.
 
 Raw bearer tokens, refresh tokens, signing keys, provider claim maps, client secrets, audit detail payloads, and other credential/configuration secrets are never rendered.
 
