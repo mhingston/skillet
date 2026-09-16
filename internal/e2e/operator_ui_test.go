@@ -65,7 +65,7 @@ func TestOfflineM3OperatorAcceptance(t *testing.T) {
 	seedOperatorRepository(t, ctx, catalog, "other", "private", "https://example.invalid/other.git")
 	seedOperatorQuarantine(t, ctx, catalog, "demo", "skills", "bad-skill")
 	seedOperatorQuarantine(t, ctx, catalog, "other", "private", "other-secret-skill")
-	if err := catalog.RecordAudit(ctx, "demo", "repository_sync_succeeded", map[string]any{"repository_id": "demo/skills"}); err != nil {
+	if err := catalog.RecordAudit(ctx, "demo", "repository_sync_succeeded", map[string]any{"repository_id": "demo/skills", "commit": "commit-bad-skill"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := catalog.RecordAudit(ctx, "other", "repository_sync_failed", map[string]any{"repository_id": "other/private"}); err != nil {
@@ -127,7 +127,7 @@ func TestOfflineM3OperatorAcceptance(t *testing.T) {
 		if status != http.StatusOK {
 			t.Fatalf("operator status=%d body=%s", status, body)
 		}
-		for _, want := range []string{"Operator workspace", "demo/skills", "bad-skill", "Source-owned · read-only", "Raw bearer tokens", "Audit export health"} {
+		for _, want := range []string{"Operator workspace", "demo/skills", "bad-skill", "Current quarantine", "Current quarantined", "Historical quarantined revisions", "Source-owned · read-only", "Raw bearer tokens", "Audit export health"} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("operator page missing %q: %s", want, body)
 			}

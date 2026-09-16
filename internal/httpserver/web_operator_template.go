@@ -1,6 +1,20 @@
 package httpserver
 
-const operatorTemplateSource = `{{define "operator-page"}}<!doctype html>
+const operatorTemplateSource = `{{define "operator-quarantine-card"}}
+<article class="result-card">
+  <div class="card-heading"><div><span class="badge state-yanked">quarantined</span></div></div>
+  <h3>{{if .Name}}{{.Name}}{{else}}{{.Path}}{{end}}</h3>
+  <dl class="compact-meta">
+    <div><dt>Skill</dt><dd><code>{{.SkillID}}</code></dd></div>
+    <div><dt>Revision</dt><dd><code>{{short .RevisionID}}</code></dd></div>
+    <div><dt>Repository</dt><dd>{{.RepositoryID}}</dd></div>
+    <div><dt>Path</dt><dd><code>{{.Path}}</code></dd></div>
+    <div><dt>Commit</dt><dd><code>{{short .Commit}}</code></dd></div>
+  </dl>
+  {{if .Findings}}<dl class="detail-list">{{range .Findings}}<div><dt>{{.Code}}</dt><dd>{{.Message}}</dd></div>{{end}}</dl>{{else}}<p class="muted">Validation findings were not available in the bounded projection.</p>{{end}}
+</article>
+{{end}}
+{{define "operator-page"}}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -100,7 +114,8 @@ const operatorTemplateSource = `{{define "operator-page"}}<!doctype html>
                     <div><dt>Trust</dt><dd>{{.TrustLevel}}</dd></div>
                     <div><dt>Owner</dt><dd>{{.Owner}}</dd></div>
                     <div><dt>Active skills</dt><dd>{{.ActiveSkills}}</dd></div>
-                    <div><dt>Quarantined</dt><dd>{{.Quarantined}}</dd></div>
+                    <div><dt>Current quarantined</dt><dd>{{if .CurrentQuarantineKnown}}{{.CurrentQuarantined}}{{else}}unknown{{end}}</dd></div>
+                    <div><dt>Historical quarantined revisions</dt><dd>{{.QuarantinedRevisions}}</dd></div>
                     <div><dt>Last reconciliation</dt><dd>{{if .LastReconcileEvent}}{{.LastReconcileEvent}}{{else}}—{{end}}</dd></div>
                     <div><dt>At</dt><dd>{{if .LastReconciledAt}}{{.LastReconciledAt}}{{else}}—{{end}}</dd></div>
                   </dl>
@@ -111,23 +126,21 @@ const operatorTemplateSource = `{{define "operator-page"}}<!doctype html>
         </section>
 
         <section class="detail-section">
-          <h2>Quarantined admissions</h2>
-          {{if .Snapshot.Quarantined}}
+          <h2>Current quarantine</h2>
+          <p>These are entries from the latest successful source snapshot. Historical immutable revisions are shown separately below.</p>
+          {{if .Snapshot.CurrentQuarantined}}
             <div class="results-panel">
-              {{range .Snapshot.Quarantined}}
-                <article class="result-card">
-                  <div class="card-heading"><div><span class="badge state-yanked">quarantined</span></div></div>
-                  <h3>{{if .Name}}{{.Name}}{{else}}{{.Path}}{{end}}</h3>
-                  <dl class="compact-meta">
-                    <div><dt>Skill</dt><dd><code>{{.SkillID}}</code></dd></div>
-                    <div><dt>Revision</dt><dd><code>{{short .RevisionID}}</code></dd></div>
-                    <div><dt>Repository</dt><dd>{{.RepositoryID}}</dd></div>
-                    <div><dt>Path</dt><dd><code>{{.Path}}</code></dd></div>
-                    <div><dt>Commit</dt><dd><code>{{short .Commit}}</code></dd></div>
-                  </dl>
-                  {{if .Findings}}<dl class="detail-list">{{range .Findings}}<div><dt>{{.Code}}</dt><dd>{{.Message}}</dd></div>{{end}}</dl>{{else}}<p class="muted">Validation findings were not available in the bounded projection.</p>{{end}}
-                </article>
-              {{end}}
+              {{range .Snapshot.CurrentQuarantined}}{{template "operator-quarantine-card" .}}{{end}}
+            </div>
+          {{else}}<div class="state-card"><p>No current quarantined entries were found in the latest successful snapshots. Repositories without a successful snapshot are marked unknown above.</p></div>{{end}}
+        </section>
+
+        <section class="detail-section">
+          <h2>Quarantine history</h2>
+          <p>These are immutable quarantined revisions retained for audit and diagnosis. The list is limited to the 50 most recent revisions.</p>
+          {{if .Snapshot.HistoricalQuarantined}}
+            <div class="results-panel">
+              {{range .Snapshot.HistoricalQuarantined}}{{template "operator-quarantine-card" .}}{{end}}
             </div>
           {{else}}<div class="state-card"><p>No quarantined revisions in this organisation.</p></div>{{end}}
         </section>
