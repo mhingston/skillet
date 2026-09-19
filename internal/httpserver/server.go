@@ -61,7 +61,7 @@ type requestIDContextKey struct{}
 
 const (
 	findSkillsResourceURI = "skillet://skills/find-skills"
-	skillettServerInstructions = "For specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow work, read the skillet://skills/find-skills resource before choosing a task-specific skill. Use Skillet discovery results as candidates; do not silently install or execute capabilities."
+	skilletServerInstructions = "For specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow work, read the skillet://skills/find-skills resource before choosing a task-specific skill. Use Skillet discovery results as candidates; do not silently install or execute capabilities."
 )
 
 type Server struct {
@@ -219,7 +219,7 @@ func (s *Server) Handler(mcpPath string, maxBodyBytes int64, auth ...AuthConfig)
 		fmt.Fprintln(w, "# TYPE skillet_auth_failures_total counter")
 		fmt.Fprintf(w, "skillet_auth_failures_total %d\n", s.metrics.AuthFailures.Load())
 	})
-	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "skillet", Version: Version}, &mcp.ServerOptions{Instructions: skillettServerInstructions})
+	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "skillet", Version: Version}, &mcp.ServerOptions{Instructions: skilletServerInstructions})
 	mcpServer.AddResource(&mcp.Resource{
 		URI:         findSkillsResourceURI,
 		Name:        "find-skills",
