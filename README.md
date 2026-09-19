@@ -89,19 +89,21 @@ Configure your MCP-capable agent host to use:
 http://localhost:8080/mcp
 ```
 
-Skillet also includes a small bootstrap skill at [`skills/find-skills/SKILL.md`](skills/find-skills/SKILL.md). Installing it gives compatible hosts a reusable workflow for deciding when and how to query Skillet:
+Skillet exposes its bootstrap discovery workflow as the MCP resource:
+
+```text
+skillet://skills/find-skills
+```
+
+MCP clients that support resources can discover it with `resources/list` and read it with `resources/read`. The resource is served directly from [`skills/find-skills/SKILL.md`](skills/find-skills/SKILL.md), so the MCP and filesystem forms share one canonical source. Skillet's MCP initialization instructions point clients at this resource for specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow work.
+
+If a host does not support MCP resources, install the same bootstrap skill into its local skill directory as a compatibility fallback:
 
 ```sh
 cp -R skills/find-skills ~/.claude/skills/find-skills
 # or ~/.codex/skills/find-skills
 # or ~/.copilot/skills/find-skills
 # or ~/.config/opencode/skills/find-skills
-```
-
-A useful host-level instruction is simply:
-
-```text
-For specialised or repository-level work, search Skillet before choosing a task-specific skill. Prefer a relevant approved result when one is available.
 ```
 
 Skillet returns metadata first. The caller explicitly chooses what to materialise; Skillet never silently selects or executes a capability.
