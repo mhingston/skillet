@@ -170,6 +170,50 @@ func TestOfficialMCPClientListsSkilletTools(t *testing.T) {
 	}
 }
 
+func TestOfficialMCPClientExposesFindSkillsResourceAndInstructions(t *testing.T) {
+	ts := httptest.NewServer(New(nil, nil).Handler("/mcp", 1<<20, AuthConfig{Mode: "development", OrganizationID: "demo"}))
+	defer ts.Close()
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "resource-test-client", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: ts.URL + "/mcp", DisableStandaloneSSE: true, MaxRetries: -1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	initialized := session.InitializeResult()
+	if initialized == nil || !strings.Contains(initialized.Instructions, findSkillsResourceURI) {
+		t.Fatalf("instructions = %#v", initialized)
+	}
+
+	resources, err := session.ListResources(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, resource := range resources.Resources {
+		if resource.URI == findSkillsResourceURI {
+			found = true
+			if resource.Name != "find-skills" || resource.MIMEType != "text/markdown" {
+				t.Fatalf("resource = %+v", resource)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("resources = %+v", resources.Resources)
+	}
+
+	read, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: findSkillsResourceURI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Contents) != 1 || read.Contents[0].MIMEType != "text/markdown" ||
+		!strings.Contains(read.Contents[0].Text, "name: find-skills") ||
+		!strings.Contains(read.Contents[0].Text, "# Find Skills") {
+		t.Fatalf("resource contents = %+v", read.Contents)
+	}
+}
+
 func TestListSkillsReturnsDeterministicPaginatedMetadata(t *testing.T) {
 	index, err := search.New(nil)
 	if err != nil {
