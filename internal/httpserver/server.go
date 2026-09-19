@@ -59,10 +59,9 @@ type AuthConfig struct {
 type organizationContextKey struct{}
 type requestIDContextKey struct{}
 
-const (
-	findSkillsResourceURI = "skillet://skills/find-skills"
-	skilletServerInstructions = "For specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow work, read the skillet://skills/find-skills resource before choosing a task-specific skill. Use Skillet discovery results as candidates; do not silently install or execute capabilities."
-)
+const findSkillsResourceURI = "skillet://skills/find-skills"
+
+const skilletServerInstructions = "For specialised, domain-specific, repository-level, architecture, QA, delivery, or workflow work, read the skillet://skills/find-skills resource before choosing a task-specific skill. Use Skillet discovery results as candidates; do not silently install or execute capabilities."
 
 type Server struct {
 	log            *slog.Logger
